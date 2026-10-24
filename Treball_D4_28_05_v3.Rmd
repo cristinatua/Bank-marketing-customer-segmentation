@@ -1,0 +1,2942 @@
+---
+title: "ESTUDIO DE SEGMENTACIÓN DE CLIENTES EN MARKETING BANCARIO"
+author: "Claudia Aguilar"
+date: "2026-02-26"
+output:
+  pdf_document:
+    latex_engine: xelatex
+    keep_tex: true
+    highlight: tango
+  word_document: default
+  html_document:
+    df_print: paged
+toc-depth: 4
+toc: true
+bibliography: references.bib
+header-includes:
+- \usepackage{tcolorbox}
+- \tcbuselibrary{most}
+- \usepackage{xcolor}
+- \usepackage{booktabs}
+- \usepackage{titlesec}
+- \usepackage{fontspec}
+- \usepackage{graphicx}
+- \usepackage{setspace}
+- \renewcommand{\contentsname}{ÍNDICE}
+- "\\makeatletter\n\\newcommand{\\subtitle}[1]{\\def\\@subtitle{#1}}\n\\subtitle{Un
+  análisis multivariante de las características y patrones de comportamiento de los
+  clientes}\n\n\\renewcommand{\\maketitle}{%\n  \\begin{titlepage}\n    \\centering\n
+  \   \n    % Logo\n    \\vspace*{2cm}\n    \\includegraphics[width=4cm]{logo_upc.jpg}\n
+  \   \\vspace{2cm}\n    \n    % Título\n    {\\Huge\\bfseries\\sffamily\\color{black!100}
+  \\@title\\par}\n    \\vspace{0.8cm}\n    \n    % Subtítulo\n    {\\Large\\sffamily\\color{black!80}
+  \\@subtitle\\par}\n    \n    \\vfill\n    \n    {\\small\\sffamily \n    Claudia
+  Aguilar, María del Pilar Forero, Yéssica Lourido, Carmen Palacios y Cristina Tuá
+  \\\\ \n    Universitat Politècnica de Catalunya \\\\ \n    Facultat de Matemàtiques
+  i Estadística \\\\ \n    27 de Febrero de 2026}\n    \n  \\end{titlepage}\n}\n\\makeatother\n"
+- \setmainfont{Times New Roman}
+- \setsansfont{Arial}
+- \setmonofont{Courier New}
+- \titleformat{\section} {\Large\bfseries\sffamily\color{black!100}} {\thesection}{1em}{}
+- \titleformat{\subsection} {\large\bfseries\sffamily\color{black!80}} {\thesubsection}{1em}{}
+- \titleformat{\subsubsection} {\normalsize\bfseries\sffamily\color{black!70}} {\thesubsubsection}{1em}{}
+- \titleformat{\paragraph} {\normalsize\bfseries\sffamily\color{black!60}} {\theparagraph}{1em}{}
+- \titlespacing*{\section}{0pt}{2ex plus 1ex minus .2ex}{1ex}
+- \titlespacing*{\subsection}{0pt}{1.5ex plus .5ex minus .2ex}{0.8ex}
+- \titlespacing*{\subsubsection}{0pt}{1ex plus .2ex}{0.5ex}
+- \titlespacing*{\paragraph}{0pt}{0.8ex plus .2ex}{0.3ex}
+- \onehalfspacing
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  fig.align = "center",
+  fig.width = 6,    # més petit
+  fig.height = 4,
+  size = "tiny" ,
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+```{r,echo=FALSE}
+library(missForest)
+library(tidyverse)
+library(naniar)
+library(visdat)
+library(ggplot2)
+library(naniar)
+library(patchwork)
+library(EnvStats)
+library(DataExplorer)
+library(stats)
+library(corrplot)
+library(kableExtra)
+library(inspectdf)
+library(dendextend)
+library(NbClust)
+library(cluster)
+library(ggpubr)
+library(FactoMineR)
+library(modeest)
+library(FactoClass)
+```
+
+
+\newpage 
+
+# Definición del proyecto
+
+## Fuente de los datos
+
+Los datos utilizados en este trabajo provienen del conjunto de datos de Bank Marketing, encontrados en el repositorio UCI Machine Learning Repository [@uci_bank_marketing]. El conjunto de datos se puede consultar en la siguiente web: https://archive.ics.uci.edu/ml/datasets/Bank+Marketing
+
+Además, los datos han estado descritos y analizados en profundidad en [@moro2014],
+que es la referencia principal de donde hemos extraído la información del dataset. 
+
+
+\newpage
+
+## Contexto de los datos
+
+El conjunto de datos hace referencia a campañas de marketing realizadas por una entidad bancaria portuguesa. Están basados principalmente por llamadas telefónicas a los clientes. El objetivo de las campañas fue promocionar depósitos a cierto plazo. En muchos casos era necesario contactar varias veces con un mismo cliente para saber si, finalmente, quería el depósito. 
+
+Las variables del dataset recogen información demográfica de los clientes (la edad, la profesión o el nivel educativo), además de datos relacionados con la llamada o el marketing (duración de la llamada o número de contactos). También observamos algunos indicadores económicos agregados (IPC o Euríbor).
+
+El objetivo del trabajo es explorar y comprender el comportamiento de los clientes a partir de sus características socioeconómicas y de la interacción con el banco. Para ello utilizaremos técnicas de análisis multivariante que permitan reducir la dimensionalidad, identificar patrones y caracterizar diferentes perfiles de clientes. 
+
+
+## Estructura de la matriz de datos 
+
+El primer paso es leer los datos para obtener el dataset: 
+
+```{r}
+library(readxl)
+dades<-read.csv2('bank-additional-full.csv',header=TRUE,sep=";")
+nrow(dades)
+```
+
+Observamos que nuestro dataframe tiene 41188 filas, por tanto, cogemos una muestra aleatoria para poder trabajar de forma más sencilla con estos.
+
+```{r}
+set.seed(123) 
+muestra <- dades[sample(nrow(dades), 5000), ]
+```
+
+Intentamos observar el dataframe para ver que tipo de variables tenemos y si se han leído correctamente:
+
+```{r}
+str(muestra)
+```
+Observamos que las variables no están categorizadas correctamente, por tanto transformamos esas variables a sus categorías correctas. 
+
+```{r}
+# Convertimos las siguientes variables en numéricas: 
+vars_num <- c("emp.var.rate","cons.price.idx","cons.conf.idx",
+              "euribor3m","nr.employed")
+
+muestra[vars_num] <- lapply(muestra[vars_num], function(x)
+  as.numeric(as.character(x))
+)
+
+
+# También convertimos en factor las que deberian ser factores:
+vars_factor <- c("job","marital","education","contact",
+                 "month","day_of_week","poutcome",
+                 "default","housing","loan","y")
+
+
+muestra[vars_factor] <- lapply(muestra[vars_factor], factor)
+```
+
+```{r, include=FALSE}
+str(muestra)
+```
+
+```{r}
+varTypes <- sapply(muestra, class)
+
+# Definimos lo que es una variable numérica
+varNum <- names(varTypes)[which(varTypes %in% c("integer", "numeric"))] 
+
+# Seleccionamos las variables numéricas
+varNum <- muestra %>% 
+  select(where(is.numeric)) %>% 
+  names 
+```
+
+Las variables numéricas de nuestro estudio son: `r varNum`. 
+
+```{r}
+# Definimos el concepto de categórica
+varCat <- names(varTypes)[which(varTypes %in% c("factor", "character"))] 
+
+# Seleccionamos variables categóricas
+varCat <- muestra %>% 
+  select(where(is.factor) | where(is.character)) %>% 
+  names 
+
+```
+
+Las variables categóricas de nuestro estudio son: `r varCat`. 
+
+A continuación, presentamos una descripción de cada variable y su interpretación dentro del contexto económico:
+
+- Age: edad (numérico).
+
+- Job: tipo de trabajo (categórico):
+"administrativo", "desconocido", "desempleado", "dirección", "empleada del hogar", "emprendedor", "estudiante", "obrero", "autónomo", "jubilado", "técnico", "servicios".
+
+- Marital: estado civil (categórico):
+"casado", "divorciado", "soltero"
+(nota: "divorciado" incluye divorciados o viudos).
+
+- Education: nivel educativo (categórico):
+"desconocido", "secundaria", "primaria", "superior".
+
+- Default: ¿tiene crédito en mora/incumplimiento? (binario):
+"sí", "no".
+
+- Balance: saldo medio anual, en euros (numérico).
+
+- Housing: ¿tiene préstamo hipotecario? (binario):
+"sí", "no".
+
+- Loan: ¿tiene préstamo personal? (binario):
+"sí", "no".
+
+- Contact: tipo de comunicación de contacto (categórico):
+"desconocido", "teléfono fijo", "móvil".
+
+- Day: día del mes del último contacto (numérico).
+
+- Month: mes del último contacto (categórico):
+"ene", "feb", "mar", ..., "nov", "dic".
+
+- Duration: duración del último contacto, en segundos (numérico).
+
+- Campaign: número de contactos realizados durante esta campaña para este cliente (numérico, incluye el último contacto).
+
+- Pdays: número de días desde el último contacto en una campaña anterior
+(numérico, -1 significa que no fue contactado previamente).
+
+- Previous: número de contactos realizados antes de esta campaña para este cliente (numérico)
+
+- Poutcome: resultado de la campaña de marketing anterior (categórico):
+"desconocido", "otro", "fracaso", "éxito".
+
+- y: ¿el cliente ha contratado un depósito a plazo? (binario):
+"sí", "no".
+
+Al leer la estructura la web de la que provienen los datos, observamos que a los "NA" se les llama **unknown**, por tanto, convertimos estos a NA. 
+
+```{r}
+muestra[muestra == "unknown"] <- NA
+```
+
+También procedemos a transformar las variables binarias (Yes/No) a respuesta (1/0). 
+
+```{r}
+library(dplyr)
+muestra <- muestra %>%
+  mutate(
+    y = case_when(
+      y == "yes" ~ 1,
+      y == "no"  ~ 0
+    ),
+    contact = case_when(
+      contact == "cellular"  ~ 1,
+      contact == "telephone" ~ 0
+    ),
+    default = case_when(
+      default == "yes" ~ 1,
+      default == "no"  ~ 0
+    ),
+    housing = case_when(
+      housing == "yes" ~ 1,
+      housing == "no"  ~ 0
+    ),
+    loan = case_when(
+      loan == "yes" ~ 1,
+      loan == "no"  ~ 0
+    ),
+  )
+```
+
+```{r}
+muestra <- muestra %>%
+  mutate(across(c(y, contact, default, housing, loan), 
+                ~ factor(.x, levels = c(0,1))))
+```
+
+```{r, include=FALSE}
+str(muestra)
+```
+
+Ahora que ya tenemos nuestros datos finales, vamos a hacer una breve descripción y conteo de estos: 
+
+```{r,echo=FALSE}
+columnas<-ncol(muestra)
+filas<-nrow(muestra)
+na_total <- sum(is.na(muestra))
+filas_con_na <- sum(!complete.cases(muestra))
+porcentaje_na <- (na_total / (filas * columnas)) * 100
+```
+
+```{r,echo=FALSE}
+tabla_missing <- data.frame(
+  Numero_Columnas = columnas,
+  Numero_Filas = filas,
+  Numero_NA_total = na_total,
+  Filas_con_NA = filas_con_na,
+  Porcentaje_NA_total = porcentaje_na
+)
+
+kable(tabla_missing,
+      caption = "ESTRUCTURA MATRICIAL",
+      booktabs = TRUE,
+      linesep = "")
+```
+
+
+```{r}
+inspect_types(muestra) %>% show_plot()
+```
+
+Añadimos también los siguientes gráficos que describen la distribución de los valores faltantes.
+
+```{r,echo=FALSE}
+resum_vars <- miss_var_summary(muestra)
+
+p1 <- gg_miss_var(muestra) + 
+  labs(title = "Faltantes por Variable", y = "Recuento") +
+  theme_minimal(base_size = 8) 
+
+p2 <- ggplot(resum_vars, aes(x = pct_miss)) +
+  geom_histogram(fill = "steelblue",    
+                 color = "white") +     
+  labs(
+    title = "Distribución del % de valores faltantes por variable",
+    x = "Porcentaje de valores faltantes (%)",
+    y = "Cantidad de variables"
+  ) +
+  theme_minimal(base_size = 8)
+
+
+#install.packages("gridExtra")
+library(gridExtra)
+grid.arrange(p1, p2, ncol = 2)
+```
+
+
+
+\newpage
+
+# Plan de trabajo
+
+## Descomposición de tareas y diagrama de Gantt
+
+Presentamos la secuencia temporal de las tareas mediante un diagrama de Gantt, agrupando los bloques de trabajo según las fechas límite originales:
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(ggplot2)
+
+crono_old <- data.frame(
+  Task = factor(
+    c("D1: Definición",
+      "D2: Plan de trabajo",
+      "D3: Descriptiva",
+      "D4: Análisis final"),
+    
+    levels = rev(c(
+      "D1: Definición",
+      "D2: Plan de trabajo",
+      "D3: Descriptiva",
+      "D4: Análisis final"
+    ))
+  ),
+  
+  Start = as.Date(c(
+    "2026-02-15",
+    "2026-02-28",
+    "2026-03-14",
+    "2026-03-28"
+  )),
+  
+  End = as.Date(c(
+    "2026-02-27",
+    "2026-03-13",
+    "2026-03-27",
+    "2026-05-22"
+  )),
+  
+  Fase = c(
+    "Fase 1",
+    "Fase 2",
+    "Fase 3",
+    "Fase 4"
+  )
+)
+
+ggplot(crono_old) +
+  
+  # barras
+  geom_segment(
+    aes(
+      x = Start,
+      xend = End,
+      y = Task,
+      yend = Task,
+      color = Fase
+    ),
+    linewidth = 10,
+    lineend = "round"
+  ) +
+  
+  # puntos inicio-fin
+  geom_point(
+    aes(x = Start, y = Task, color = Fase),
+    size = 4
+  ) +
+  
+  geom_point(
+    aes(x = End, y = Task, color = Fase),
+    size = 4
+  ) +
+  
+  scale_color_manual(values = c(
+    "#F4A261",
+    "#2A9D8F",
+    "#457B9D",
+    "#E63946"
+  )) +
+  
+  scale_x_date(
+    date_breaks = "1 week",
+    date_labels = "%d-%b"
+  ) +
+  
+  labs(
+    title = "Escaleta temporal del proyecto",
+    subtitle = "Planificación inicial del trabajo",
+    x = "Calendario",
+    y = ""
+  ) +
+  
+  theme_minimal(base_size = 11) +
+  
+  theme(
+    legend.position = "none",
+    
+    panel.grid.major.y = element_blank(),
+    
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1
+    ),
+    
+    plot.title = element_text(
+      face = "bold",
+      size = 15
+    ),
+    
+    plot.subtitle = element_text(
+      size = 10,
+      color = "gray40"
+    )
+  )
+```
+
+Durante la fase de análisis descriptivo y bivariante, detectamos anomalías estructurales en la base de datos original que comprometían la validez del estudio.
+
+$$\text{Nota Técnica: Observamos que las variables categóricas presentaban una distribución de frecuencias perfectamente uniforme } \\ (P(X=x_i)  
+\approx \frac{1}{n}), $$$$\text{así como una ausencia total de colinealidad en el análisis bivariante. Estas características son indicativas de un } $$$$\text{dataset sintético generado aleatoriamente, carente de las estructuras de correlación necesarias para aplicar técnicas } $$$$\text{de reducción de la dimensionalidad (PCA) o algoritmos de partición (Clustering) con sentido estadístico.}$$
+
+Debido a esto, nosotras decidimos que la mejor opción era sustituir la fuente de datos por una base real, lo que requirió una re-ejecución de las fases D1 y D2 en un tiempo adaptado.
+
+A continuación, mostramos el nuevo diagrama los plazos ajustados para las entregas pendientes:
+
+```{r,echo=FALSE}
+crono_new <- data.frame(
+  Task = factor(
+    c(
+      "D1: Nuevo dataset",
+      "D2: Plan revisado",
+      "D3: Descriptiva",
+      "D4: Análisis final"
+    ),
+    
+    levels = rev(c(
+      "D1: Nuevo dataset",
+      "D2: Plan revisado",
+      "D3: Descriptiva",
+      "D4: Análisis final"
+    ))
+  ),
+  
+  Start = as.Date(c(
+    "2026-03-20",
+    "2026-03-22",
+    "2026-03-25",
+    "2026-03-28"
+  )),
+  
+  End = as.Date(c(
+    "2026-03-21",
+    "2026-03-24",
+    "2026-03-27",
+    "2026-05-22"
+  )),
+  
+  Fase = c(
+    "Fase 1",
+    "Fase 2",
+    "Fase 3",
+    "Fase 4"
+  )
+)
+
+ggplot(crono_new) +
+  
+  # barras temporales
+  geom_segment(
+    aes(
+      x = Start,
+      xend = End,
+      y = Task,
+      yend = Task,
+      color = Fase
+    ),
+    linewidth = 10,
+    lineend = "round"
+  ) +
+  
+  # puntos de inicio
+  geom_point(
+    aes(
+      x = Start,
+      y = Task,
+      color = Fase
+    ),
+    size = 4
+  ) +
+  
+  # puntos de final
+  geom_point(
+    aes(
+      x = End,
+      y = Task,
+      color = Fase
+    ),
+    size = 4
+  ) +
+  
+  scale_color_manual(values = c(
+    "#F4A261",
+    "#2A9D8F",
+    "#457B9D",
+    "#E63946"
+  )) +
+  
+  scale_x_date(
+    date_breaks = "1 week",
+    date_labels = "%d-%b"
+  ) +
+  
+  labs(
+    title = "Planificación de contingencia (Dataset real)",
+    subtitle = "Reestructuración y adaptación del proyecto",
+    x = "Calendario",
+    y = ""
+  ) +
+  
+  theme_minimal(base_size = 11) +
+  
+  theme(
+    legend.position = "none",
+    
+    panel.grid.major.y = element_blank(),
+    
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1
+    ),
+    
+    plot.title = element_text(
+      face = "bold",
+      size = 15
+    ),
+    
+    plot.subtitle = element_text(
+      size = 10,
+      color = "gray40"
+    )
+  )
+```
+
+## Escaleta de distribución de tareas
+
+La realización del proyecto se ha organizado mediante una distribución equilibrada de las tareas entre los miembros del grupo, teniendo en cuenta las diferentes fases del análisis propuestas.
+
+En primer lugar, las tareas de selección, modificación y descripción del conjunto de datos han estado realizadas conjuntamente por todos los integrantes del grupo, por tal de asegurar una comprensión del contexto de los datos y sus objetivos. 
+
+Posteriormente, se detalla la distribución de tareas correspondientes a las entregas 3 (E3) y 4 (E4) junto con su 
+responsable: 
+
+```{r tabla_asignacion, echo=FALSE, message=FALSE}
+library(knitr)
+library(kableExtra)
+
+tabla <- data.frame(
+  MIEMBROS = c(
+    "E3:Estructura de los datos y descriptiva",
+    "E3:Descriptiva univariante",
+    "E3:Descriptiva bivariante",
+    "E3:Clustering",
+    "E3:Profiling",
+    "E4:ACP y ACM",
+    "E4:AMD",
+    "E4:Análisis discriminante",
+    "E4:Discriminador alternativo",
+    "E4:Clustering jerárquico sobre FAMD"
+  ),
+  Carmen = c("X","","","","","X","","","",""),
+  Yéssica = c("","X","","","","","X","","",""),
+  Pilar = c("","","X","","","","","","X",""),
+  Cristina = c("","","","X","","","","X","",""),
+  Claudia = c("","","","","X","","","","","X")
+)
+kable(
+  tabla,
+  format = "latex",
+  booktabs = FALSE,
+  align = c("l","c","c","c","c","c"),
+  caption = "Cuadrícula de asignación de tareas del proyecto",
+  linesep = "\\hline"
+) %>%
+  kable_styling(latex_options = "hold_position")
+
+```
+
+Los apartados finales de análisis comparativo, conclusiones generales y la elaboración del plan de trabajo final se realizarán de manera conjunta por todos los miembros del grupo, con el objetivo de integrar los distintos resultados obtenidos y asegurar una interpretación global del proyecto.
+
+Cabe destacar que esta distribución de tareas puede estar sujeta a modificaciones en función de las necesidades del proyecto o de imprevistos que puedan surgir a lo largo de su desarrollo. En caso de que se produzca algún cambio en la asignación de tareas, este se indicará en la propia entrega. 
+
+## Plan de riesgos
+
+Los principales riesgos a los que nos enfrentamos en la realización de este trabajo son los siguientes, añadiendo los pasos que seguiremos para solventarlos:
+
+\begin{enumerate}
+\item \textbf{Carga computacional}: 
+El uso de 5.000 observaciones puede ralentizar los algoritmos de clustering jerárquico. 
+\textit{Solución:} Optimizaremos el uso de memoria mediante métodos particionales previos o el uso de funciones con una mayor capacidad computacional en R.
+
+\item \textbf{Sesgo por datos faltantes (NAs) artificiales}:
+Al haber introducido NAs de forma aleatoria para cumplir los requisitos, existe el riesgo de perder relaciones multivariantes clave.
+\textit{Solución:} Si en la fase D3 el análisis descriptivo muestra distorsiones graves, reajustaremos la semilla (\texttt{set.seed}) de generación.
+
+\item \textbf{Inconsistencia o errores en los datos}:
+El registro de nuestros datos puede contener distintos errores como tasas demasiado altas o totalmente incoherentes afectando al análisis.
+\textit{Solución:} Detectar los posibles outliners, verificar los valores sospechosos y corregirlos si conocemos los valores reales o simplemente eliminarlos mediante distintas técnicas estadísticas.
+
+\item \textbf{Multicolinealidad}: Nuestra base de datos contiene un elevado número de variables, lo que puede provocar una fuerte correlación entre sí, afectando a modelos estadísticos de regresión al no ser capaz de diferenciar qué variable realmente esta influenciando.
+\textit{Solución:} La matriz de correlación y los VIF's nos permiten detectar la multicolinealidad en nuestros datos. Eliminar, combinar o usar PCA sobre la base de datos nos permitirá eliminar la multicolinealidad. 
+
+\item \textbf{Ruido en los datos}: Ante la gran cantidad de información con la que estamos trabajando, es sencillo encontrar observaciones que nos impidan detectar los patrones en los datos dada su aleatoriedad.
+\textit{Solución:} Entre las posibles soluciones está el suavizado de datos, la agrupación por categorías y la eliminación de los valores extremos.
+
+\item \textbf{Divergencias en la interpretación de resultados}: 
+Existe el riesgo de que las estructuras relacionales identificadas en los métodos factoriales (ACP y ACM) no coincidan visualmente con la partición de grupos del Clustering, generando conclusiones contradictorias.
+\textit{Solución:} Añadiremos una fase de validación cruzada mediante el análisis FAMD para actuar como puente entre variables de distinta naturaleza. También unificaremos los criterios de "profiling" de los clústeres mediante etiquetas descriptivas consensuadas, asegurándonos de que la conclusión final sea coherente y robusta.
+
+\end{enumerate}
+
+\newpage
+
+# Estructura de los datos y descriptiva 
+
+## Motivación del trabajo 
+
+El objetivo de este trabajo es analizar los factores que influyen en el éxito de las campañas de marketing bancario, en concreto, en la suscripción de depósitos. El conjunto de datos incluye información sobre características de los clientes, su situación financiera, así como variables relacionadas con la campaña telefónica realizada y el contexto socioeconómico del momento. 
+
+El análisis de estos datos permite estudiar posibles relaciones entre el perfil del cliente, las condiciones económicas y la probabilidad de éxito de una campaña de marketing. Además, también permite identificar patrones de comportamiento en los clientes y factores determinantes en la toma de decisiones para futuras campañas de marketing. 
+
+## Descripción formal de la estructura de los datos 
+
+El conjunto de datos utilizados proviene de la base de datos Bank Marketing, encontrados en el repositorio UCI Machine Learning Repository [@uci_bank_marketing]. El dataset contiene 41.188 observaciones y 21 variables. 
+
+Por una parte, cada fila / observación representa un cliente contactado durante la campaña comercial, que se llevó a cabo de manera telefónica, realizada por una entidad bancaria portuguesa. Por otra parte, las variables / columnas recogen información sobre el cliente, la campaña y el contexto económico del momento. El conjunto de datos incluye tanto variables categóricas, concretamente 11, por ejemplo el estado civil o el tipo de trabajo, como 10 variables numéricas entre las cuales encontramos la edad o los indicadores macroeconómicos. 
+
+El periodo temporal en el que se realizó la campaña va desde mayo de 2008 hasta noviembre de 2010, lo que permite analizar la evolución de las campañas junto a un contexto económico real. 
+
+La variable objetivo del estudio es y, que indica si el cliente ha suscrito o no un depósito bancario, tratándose de una variable categórica binaria.
+
+Para facilitar el análisis de los datos hemos decidido trabajar con una muestra de 5000 observaciones. Esta muestra ha sido seleccionada mediante un muestreo aleatorio simple para asegurar la representatividad del conjunto de datos original. Además, hemos realizado recodificaciones en las variables binarias, transformándolas a formato numérico (0/1), con el fin de facilitar su tratamiento en modelos estadísticos. Por otra parte, los valores "unknown" los hemos tratado como valores faltantes (NA) para su posterior análisis, tal y como indica el creador de la base de datos.
+
+Para resumir de forma estructurada las principales características del conjunto de datos presentamos una tabla descriptiva que recoge el número de observaciones, variables y la presencia de valores faltantes. 
+
+
+```{r,echo=FALSE}
+
+# Datos de ejemplo basados en tu código
+# Asegúrate de que 'muestra', 'varNum', 'varCat' existen antes de este chunk
+columnas <- ncol(muestra)
+filas <- nrow(muestra)
+var_num <- length(varNum)
+var_cat <- length(varCat)
+na_total <- sum(is.na(muestra))
+na_fila <- sum(!complete.cases(muestra))
+porcentaje <- round(mean(is.na(muestra)) * 100, 2)
+
+# Crear la tabla final
+tabla_missing <- data.frame(
+  Numero_Filas = filas,
+  Numero_Columnas = columnas,
+  Numero_Variables_Numéricas = var_num,
+  Numero_Variables_Categóricas = var_cat,
+  Numero_NA_total = na_total,
+  Numero_NA_filas = na_fila,
+  Porcentaje_NA = porcentaje
+)
+
+
+
+kable(
+  tabla_missing,
+  caption = "Estructura matricial",
+  align = rep("c", 7),
+  booktabs = TRUE
+) %>%
+  add_header_above(c(" " = 2, "Tipo de variables" = 2, "Valores faltantes" = 3)) %>%
+  kable_styling(
+    latex_options = c("hold_position", "scale_down"),
+    full_width = FALSE,
+    position = "center",
+    font_size = 6
+  ) %>%
+  row_spec(0, bold = TRUE)
+```
+
+Con el objetivo de complementar la descripción formal de la estructura de los datos, realizamos un análisis descriptivo inicial utilizando el paquete DataExplorer de R, que permite tener una visión general rápida del conjunto de datos. 
+
+```{r,echo=FALSE}
+par(mfrow = c(1,2))
+
+plot_intro(muestra)
+plot_missing(muestra)
+```
+El análisis de valores faltantes muestra un alto nivel de variables completas, con únicamente un 1.4% de observaciones con valores perdidos, lo que indica que la pérdida de información es mínima. Además no existen variables completamente vacías. 
+
+En cuanto a la estructura del conjunto de datos, se observa un equilibrio entre los tipos de variables, con un 52.4% de variables discretas y un 47.6% de variables continuas. El 74.4% de las observaciones están completas, lo que proporciona una base suficientemente sólida para llevar a cabo el análisis.
+
+El gráfico de barras muestra la calidad de los datos midiendo la cantidad y el porcentaje de valores faltantes por cada variable. La mayoría de las variables contienen un 0% o un porcentaje muy bajo de datos perdidos. Sin embargo, la variable *default* destaca significativamente al presentar un 20.9% de valores faltantes, lo que indica que requiere especial atención en el análisis.  
+
+### Listado de variables y su información (Metadata) 
+
+A continuación, presentamos una descripción de cada variable, su interpretación dentro del contexto y los valores que esta puede tener. 
+
+```{r,echo=FALSE}
+descripcion_variables <- data.frame(
+  Variable = c(
+    "age", "job", "marital", "education", "default",
+    "housing", "loan", "contact", "month", "day_of_week",
+    "duration", "campaign", "pdays", "previous", "poutcome",
+    "emp.var.rate", "cons.price.idx", "cons.conf.idx",
+    "euribor3m", "nr.employed", "y"
+  ),
+  
+  Descripción = c(
+    "Edad del cliente",
+    "Tipo de trabajo",
+    "Estado civil",
+    "Nivel educativo",
+    "Tiene crédito en impago",
+    "Tiene préstamo hipotecario",
+    "Tiene préstamo personal",
+    "Tipo de contacto (teléfono/móvil)",
+    "Mes del último contacto",
+    "Día de la semana del contacto",
+    "Duración de la llamada (segundos)",
+    "Número de contactos durante la campaña",
+    "Días desde el último contacto previo",
+    "Número de contactos previos",
+    "Resultado de la campaña anterior",
+    "Tasa de variación del empleo",
+    "Índice de precios al consumo",
+    "Índice de confianza del consumidor",
+    "Tipo de interés Euribor a 3 meses",
+    "Número de empleados",
+    "Suscripción al depósito (variable objetivo)"
+  ),
+  
+  Ambito = c(
+    "Demografía", "Socioeconómico", "Demografía", "Educación", "Finanzas",
+    "Finanzas", "Finanzas", "Marketing", "Temporal", "Temporal",
+    "Marketing", "Marketing", "Marketing", "Marketing", "Marketing",
+    "Economía", "Economía", "Economía", "Economía", "Economía", "Marketing / Resultado"
+  ),
+  
+  Tipo = c(
+    "Numérica continua", 
+    "Categórica nominal", 
+    "Categórica nominal", 
+    "Categórica ordinal", 
+    "Categórica binaria (codificada 0/1)",
+    "Categórica binaria (codificada 0/1)", 
+    "Categórica binaria (codificada 0/1)", 
+    "Categórica nominal", 
+    "Categórica ordinal", 
+    "Categórica nominal",
+    "Numérica continua", 
+    "Numérica discreta", 
+    "Numérica discreta", 
+    "Numérica discreta", 
+    "Categórica nominal",
+    "Numérica continua", 
+    "Numérica continua", 
+    "Numérica continua",
+    "Numérica continua", 
+    "Numérica continua", 
+    "Categórica binaria (codificada 0/1)"
+  )
+)
+
+rangos <- data.frame(
+  Variable = names(muestra),
+  Min = sapply(muestra, function(x) if(is.numeric(x)) min(x, na.rm = TRUE) else ""),
+  Max = sapply(muestra, function(x) if(is.numeric(x)) max(x, na.rm = TRUE) else "")
+)
+
+categorias <- sapply(muestra, function(x){
+  
+  # Caso 1: variables binarias (aunque sean factor/character)
+  vals <- unique(x)
+  vals <- vals[!is.na(vals)]
+  
+  if(length(vals) <= 2 && all(vals %in% c("0","1", 0, 1))){
+    return("0, 1")
+  }
+  
+  # Caso 2: variables categóricas normales
+  if(is.character(x) | is.factor(x)){
+    return(paste(vals, collapse = ", "))
+  } 
+  
+  # Caso 3: resto
+  return("")
+})
+categorias <- data.frame(
+  Variable = names(categorias),
+  Categorias = categorias
+)
+
+library(dplyr)
+
+descripcion_variables <- descripcion_variables %>%
+  left_join(rangos, by = "Variable") %>%
+  left_join(categorias, by = "Variable")
+```
+
+```{r,echo=FALSE}
+kable(descripcion_variables,
+  caption = "Descripción de las variables",
+  booktabs = TRUE, linesep = "", longtable = TRUE
+) %>%
+  kable_styling(
+    latex_options = c("striped", "repeat_header"),
+    font_size = 7, full_width = FALSE
+  ) %>%
+  column_spec(2, width = "2.5cm") %>% # Descripción
+  column_spec(3, width = "2cm") %>% # Ambito
+  column_spec(7, width = "4.5cm") # Categorias
+```
+
+\newpage
+
+# Descriptiva univariante
+
+## Analisis descriptivo
+
+El análisis univariante nos permitirá comprender y analizar mejor individualmente todas las variables con las que contamos.
+
+
+Comenzaremos por las variables numéricas:
+
+```{r, echo=FALSE}
+resumen <- summary(muestra[, vars_num])
+resumen_t <- t(resumen)
+
+kable(resumen_t,
+      digits = 2,
+      caption = "Resumen estadístico de variables numéricas",
+      booktabs = TRUE) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE,
+    font_size = 9
+  )
+```
+
+```{r, echo=FALSE}
+cat(paste0("==== Gráficamente: \n"))
+
+par(mfrow = c(3,2))
+hist(muestra$age, main="Distribución de la edad", xlab="")
+hist( muestra$emp.var.rate , main="Variación de empleo", xlab="")
+hist( muestra$cons.price.idx, main="Índice de los precios ", xlab="")
+hist( muestra$cons.conf.idx, main="Índice de la confianza del consumidor", xlab="")
+hist( muestra$euribor3m, main="Índice euribor", xlab="")
+hist(muestra$nr.employed, main="Número trabajadores", xlab="")
+```
+
+Comenzaremos analizando la variable emp.var.rate, la cual nos muestra que cuenta con una media mucho menor que su mediana y con valores bastante negativos. Gráficamente, se observan bloques en valores específicos, lo que nos lleva a pensar que estos valores dependen de los periodos en los que se encuentre.
+
+La siguiente variable a analizar es cons.price.idx con una distribución bastante simétrica y poca variabilidad, no parece haber extremos fuertes.
+
+Continuamos con el cons.conf.idx que presenta solo valores negativos y una media mayor a la mediana, por lo que podremos considerar una ligera asimetría positiva.
+
+El euribor3m cuenta con valores muy bajos, cerca del 0.6, que afectan a la media, la cual es mucho menor a la mediana, presentando una asimetría negativa ya que la mayoría de datos se encuentran en valores altos, cerca del cinco.
+
+Por último, la variable nr.employed tiene una distribución bastante concentrada, poca dispersión, podemos afirmar que es una variable muy estable. El gráfico nos muestra claramente que casi es una variable discreta que al igual que la variable emp.var.rate depende de dos grandes periodos.
+
+Las conclusiones generales que podemos sacar de analizar estas variables numéricas es que no asumiremos normalidad para ninguna de ellas y que todas son realmente influyentes ya que en general nos muestran cómo separan contextos económicos.
+
+
+Por otra parte, en relación a las variables que nos faltan por analizar, disponemos de un conjunto amplio de categóricas que describen las características de los clientes, así como aspectos relacionados con la campaña de marketing. Aunque, en principio, podría parecer adecuado analizar todas las variables categóricas disponibles, esta estrategia no resulta óptima desde el punto de vista analítico.
+
+Por ello, realizaremos una selección de las variables categóricas esenciales:
+
+Job (tipo de trabajo), relacionado con los ingresos y la estabilidad económica de los clientes.
+Marital (estado civil), pues influye en los hábitos financieros de cada persona.
+Education (nivel educativo), estrechamente relacionado con la cultura financiera.
+Housing (préstamo hipotecario) y Loan (préstamo personal), muestra el nivel de endeudamiento. 
+Poutcome (resultado de las campañas anteriores), enseña cómo responde el cliente a las distintas campañas.
+
+
+
+```{r, echo=FALSE,warning=FALSE,message=FALSE}
+# Tabla de contingencia (frecuencia relativa y absoluta)
+
+cat(paste0("================= Job ================\n"))
+
+frecAbs <- table(muestra[["job"]])
+frecRel <- prop.table(frecAbs)
+nombres <-names(frecAbs)
+frecRel <- data.frame(frecRel)
+
+# Tabla combinada
+tabla_frecuencia <- data.frame(frecAbs)
+tabla_frecuencia[,"Frecuencia relativa"] <- round(frecRel[,2],3)
+
+print(tabla_frecuencia)
+cat(paste0(rep("-",50,"\n"),sep=""))
+
+# Gráficamente
+datos <- data.frame(frecAbs)
+grafico <- ggplot(datos, aes(x=Var1, y= Freq, fill=Var1)) +
+  geom_bar(stat="identity") +
+  labs(title= " Frecuencia absoluta del tipo de trabajo",
+       fill="",
+       x="Category",
+       y="Freq") + 
+  theme(axis.text.x=element_blank(), axis.ticks.x=element_blank()) +
+  scale_fill_viridis_d()+ 
+  theme(legend.text=element_text(size=8))+
+  theme(legend.position="bottom") 
+grafico
+
+```
+La gráfica muestra que las categorías admin. y blue-collar concentran la mayor frecuencia, mientras que grupos como self-employed y technician tienen una representación significativa menor.
+
+
+```{r, echo=FALSE}
+# Tabla de contingencia (frecuencia relativa y absoluta)
+
+cat(paste0("================= Marital ================\n"))
+
+frecAbs <- table(muestra[["marital"]])
+frecRel <- prop.table(frecAbs)
+nombres <-names(frecAbs)
+frecRel <- data.frame(frecRel)
+
+# Tabla combinada
+tabla_frecuencia <- data.frame(frecAbs)
+tabla_frecuencia[,"Frecuencia relativa"] <- round(frecRel[,2],3)
+
+print(tabla_frecuencia)
+cat(paste0(rep("-",50,"\n"),sep=""))
+
+# Gráficamente
+datos <- data.frame(frecAbs)
+
+grafico <- ggplot(datos, aes(x = "", y = Freq, fill = Var1)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar(theta = "y") +
+  labs(title = "Frecuencia absoluta del estado civil",
+       fill = " ") +
+  theme_void() +  
+  scale_fill_brewer(palette = "Set2") +  
+  theme(legend.position = "bottom",
+        legend.text = element_text(size = 8))
+
+grafico
+
+```
+
+En este caso, podemos ver claramente que lo que predomina en este muestra son clientes casados, seguidos de los solteros y, finalmente, en menor medida los divorciados.
+
+
+
+```{r, echo=FALSE}
+# Tabla de contingencia (frecuencia relativa y absoluta)
+
+cat(paste0("================= Education ================\n"))
+
+frecAbs <- table(muestra[["education"]])
+frecRel <- prop.table(frecAbs)
+nombres <-names(frecAbs)
+frecRel <- data.frame(frecRel)
+
+# Tabla combinada
+tabla_frecuencia <- data.frame(frecAbs)
+tabla_frecuencia[,"Frecuencia relativa"] <- round(frecRel[,2],3)
+
+print(tabla_frecuencia)
+cat(paste0(rep("-",50,"\n"),sep=""))
+
+# Gráficamente
+
+datos <- data.frame(frecAbs)
+grafico <- ggplot(datos, aes(x=Var1, y= Freq, fill=Var1)) +
+  geom_bar(stat="identity") +
+  labs(title= " Frecuencia absoluta del tipo de trabajo",
+       fill="",
+       x="Category",
+       y="Freq") + 
+  theme(axis.text.x=element_blank(), axis.ticks.x=element_blank()) +
+  scale_fill_brewer(palette = "Set2") + 
+  theme(legend.text=element_text(size=8))+
+  theme(legend.position="bottom") 
+grafico
+
+```
+En relación al nivel de estudios, observamos que tiene una mayor frecuencia estar licenciado en un grado de universidad, seguido del 'high school', lo que consideraríamos en España como el instituto. En menor medida vemos que están los 'basics' ordenados de mayor nivel a menor.
+
+```{r, echo=FALSE}
+# Tabla de contingencia (frecuencia relativa y absoluta)
+
+cat(paste0("================= Housing y Loan ================\n"))
+
+frecAbs1 <- table(muestra[["housing"]])
+frecRel1 <- prop.table(frecAbs)
+nombres1 <-names(frecAbs)
+frecRel1 <- data.frame(frecRel)
+
+frecAbs2 <- table(muestra[["loan"]])
+frecRel2 <- prop.table(frecAbs)
+nombres2 <-names(frecAbs)
+frecRel2 <- data.frame(frecRel)
+
+
+# Gráficamente
+par(mfrow=c(1,2))
+
+datos <- data.frame(frecAbs1)
+grafico1 <- ggplot(datos, aes(x=Var1, y= Freq, fill=Var1)) +
+  geom_bar(stat="identity") +
+  labs(title= "Préstamo hipotecario",
+       fill="",
+       x="Category",
+       y="Freq") + 
+  theme(axis.text.x=element_blank(), axis.ticks.x=element_blank()) +
+  scale_fill_brewer(palette = "Set2")+ 
+  theme(legend.text=element_text(size=8))+
+  theme(legend.position="bottom") 
+
+
+datos <- data.frame(frecAbs2)
+grafico2 <- ggplot(datos, aes(x=Var1, y= Freq, fill=Var1)) +
+  geom_bar(stat="identity") +
+  labs(title= " Préstamo personal",
+       fill="",
+       x="Category",
+       y="Freq") + 
+  theme(axis.text.x=element_blank(), axis.ticks.x=element_blank()) +
+  scale_fill_brewer(palette = "Set2")+ 
+  theme(legend.text=element_text(size=8))+
+  theme(legend.position="bottom") 
+
+grafico1 + grafico2
+```
+
+Observamos que mientras la deuda hipotecaria presenta una distribución bastante equilibrada entre quienes tienen y no tienen deuda, en los préstamos personales predomina claramente la ausencia de deuda.
+
+```{r, echo=FALSE}
+# Tabla de contingencia (frecuencia relativa y absoluta)
+
+cat(paste0("================= Poutcome ================\n"))
+
+frecAbs <- table(muestra[["poutcome"]])
+frecRel <- prop.table(frecAbs)
+nombres <-names(frecAbs)
+frecRel <- data.frame(frecRel)
+
+# Tabla combinada
+tabla_frecuencia <- data.frame(frecAbs)
+tabla_frecuencia[,"Frecuencia relativa"] <- round(frecRel[,2],3)
+
+print(tabla_frecuencia)
+cat(paste0(rep("-",50,"\n"),sep=""))
+
+# Gráficamente
+
+datos <- data.frame(frecAbs)
+grafico <- ggplot(datos, aes(x=Var1, y= Freq, fill=Var1)) +
+  geom_bar(stat="identity") +
+  labs(title= " Frecuencia absoluta del éxito de campañas anteriores",
+       fill="",
+       x="Category",
+       y="Freq") + 
+  theme(axis.text.x=element_blank(), axis.ticks.x=element_blank()) +
+  scale_fill_brewer(palette = "Set2") + 
+  theme(legend.text=element_text(size=8))+
+  theme(legend.position="bottom") 
+grafico
+
+```
+
+Por último, apreciamos que no tenemos mucha información en relación a cómo de bien fueron las campañas de marketing anteriores ya que predomina la respuesta 'no exist'. Centrándonos en las otras dos opciones: éxito y fracaso, vemos que es más frecuente que no sea una campaña exitosa, pero con una mínima diferencia.
+
+
+## Descripción del proceso de preprocesamiento 
+
+Antes de realizar cualquier análisis, es fundamental asegurarnos de que los datos con los que trabajaremos sean confiables y consistentes. Esto implica un proceso de preprocesamiento en el que se identifican y corrigen posibles errores, se trabaja con los valores faltantes, se detectan y analizan valores atípicos, y se verifica la coherencia de las variables para que podamos garantizar unos resultados y conclusiones que reflejen correctamente toda la información. 
+Durante los apartados anteriores ya hemos llevado a cabo análisis que nos pueden asegurar que los datos de nuestra base no contienen errores, ni de concordancia ni de medición. Por ello, ahora nos centraremos en la corrección de los NA's y de los outliers.
+
+Comenzaremos trabajando con los valores faltantes, haciendo un test de "missing completely at random", para saber si estos NA's son MCAR.
+
+```{r}
+naniar::mcar_test(muestra)
+```
+
+El p-valor de nuestro test es cero, por lo que rechazaremos la hipótesis nula de que los missings son mcar y usaremos métodos de imputación más complejos para evitar cualquier tipo de sesgo al eliminar esos NA's.
+
+```{r, echo=FALSE}
+# También convertimos en factor las que deberian ser factores:
+vars_factor <- c("job","marital","education","contact",
+                 "month","day_of_week","poutcome",
+                 "default","housing","loan","emp.var.rate","cons.price.idx","cons.conf.idx"
+                 ,"nr.employed","euribor3m","y")
+
+
+dades[vars_factor] <- lapply(dades[vars_factor], factor)
+
+imputado <- missForest(dades, variablewise = T, verbose = T, maxiter=5) 
+
+```
+```{r}
+# comprobacion
+set.seed(123) 
+muestra <- imputado$ximp[sample(nrow(dades), 5000), ]
+kable(colSums(is.na(muestra)))
+```
+
+
+Finalmente, para acabar con el preprocesamiento analizaremos los outliers, valores extremos, de nuestra base de datos.
+
+
+```{r}
+for(col in names(muestra)){
+
+  if(is.numeric(muestra[[col]])){               
+escalado <- scale(muestra[[col]], scale=TRUE)
+  }
+}
+
+sum(abs(escalado) > 3)
+
+sol <-c()
+for(col in names(muestra)){
+  if(is.numeric(muestra[[col]])){               
+test <- EnvStats::rosnerTest(dades[[col]], k = 10)
+sol <-c(sol, test$all.stats)
+  }
+}
+sum(sol$outlier)
+```
+
+Probando distintos métodos y test vemos que el número de outliers puede variar entre los 10-100 outliers, lo que es tan solo un 2.8% de nuestros datos. Como nuestra muestra cuenta con 5000 observaciones, la proporción de posibles outliers es demasiado pequeña como para que pueda afectar o sesgar nuestros resultados.
+
+
+\newpage
+
+# Descriptiva bivariante
+
+El análisis descriptivo bivariante en una muestra multivariante adquiere una gran relevancia ya que permite comenzar a construir explicaciones acerca de la información que estamos manejando. Amplía los conocimientos obtenidos en el análisis univariante, siendo más exhaustivo. Destaca la facilidad de interpretación frente a las comparaciones de un mayor número de variables. Además, permite detectar multicolinealidad. Si dos variables numéricas están muy correlacionadas su coexistencia puede generar problemas en nuestro modelo. 
+
+Para esta sección estableceremos tres modalidades de análisis según las variables a estudiar: numérica-numérica, categórica-numérica y categórica-categórica. 
+
+
+## Análisis descriptivo
+
+### Variables cuantitativas
+Para este apartado se utiliza el coeficiente de correlación de Spearman dado que las variables numéricas no cumplen el supuesto de normalidad, confirmado mediante los tests realizados en la descriptiva univariante.
+```{r,echo=FALSE}
+# Variables por tipo
+vars_num <- varNum
+vars_cat <- varCat
+
+# Matriz de correlación
+# Convertimos las columnas seleccionadas a numéricas
+muestra_num <- as.data.frame(lapply(muestra[, vars_num], as.numeric))
+
+mat_cor <- cor(muestra_num, use = "pairwise.complete.obs", method = "spearman")
+
+```
+
+
+
+```{r,echo=FALSE}
+par(mar = c(0, 0, 2, 0)) 
+
+# Gráfica
+corrplot(mat_cor, 
+         method = "color", 
+         type = "upper",          
+         tl.cex = 0.5,            # Tamaño de letra de las variables (MÁS PEQUEÑO)
+         number.cex = 0.5,        # Tamaño de los números internos
+         addCoef.col = "black",   # Añade el número
+         tl.col = "black", 
+         tl.srt = 60,             # Rotación de etiquetas para que no se pisen
+         diag = FALSE)
+```
+
+
+```{r,echo=FALSE}
+# Ver el top 10 de pares mas correlacionados
+kable(as.data.frame(as.table(mat_cor)) %>%
+  filter(Var1 != Var2) %>%
+  arrange(desc(Freq)) %>%
+  distinct(Freq, .keep_all = TRUE) %>%
+  head(8))
+```
+
+Tras los resultados obtenidos caben destacar cuatro correlaciones más fuertes que las demás:    
+- nr.employed y euribor3m. Vemos que el número de empleados y el tipo de interés a 3 meses se mueve de manera prácticamente idéntica.  
+- euribor3m y emp.var.rate. De nuevo el número de empleados está relacionado con el tipo de interés a 3 meses.  
+- nr.employed y emp.var.rate. Ambas variables vemos que están relacionados el número de empleados y la tasa de variación de empleados.
+
+Ante esto, para solucionar un posible problema de multicolinealidad, podríamos eliminar una de las variables ya que vemos que las tres tienen un comportamiento similar.
+
+
+```{r,echo=FALSE}
+# Mayor correlación negativa
+kable(as.data.frame(as.table(mat_cor)) %>%
+  filter(Var1 != Var2) %>%
+  arrange(Freq) %>% 
+  distinct(Freq, .keep_all = TRUE) %>%
+  head(8))
+```
+
+La correlación más fuerte negativamente ocurre entre `pdays` y `previous`. Tiene sentido ya que la primera se refiere a los días desde el último contacto y la segunda los contactos realizados. Esto significaría que a medida que pasa más tiempo desde la última llamada, el número de contactos previos tiende a ser menor en los registros recientes, o viceversa.
+
+
+
+### Variables categóricas
+
+Para cada pareja de las variables restantes realizamos una tabla de contingencia y posteriormente una gráfica correspondiente para su posterior análisis descriptivo.
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE,fig.show='hold', fig.width=5, fig.height=4, out.width='48%', fig.align='center'}
+#Variables categóricas
+vars_cat <- c("job", "marital", "education", "default", "housing", "loan", "contact", "month", "poutcome")
+
+# Combinaciones de parejas únicas para no repetir
+parejas <- combn(vars_cat, 2, simplify = FALSE)
+
+for (p in parejas) {
+  v1 <- p[1]
+  v2 <- p[2]
+  
+  tbl <- table(muestra[[v1]], muestra[[v2]]) # tabla de contingencia
+  test_chi <- try(chisq.test(tbl), silent = TRUE) # test
+  
+  if (!inherits(test_chi, "try-error")) {
+    p_val <- test_chi$p.value
+    # Muestro solo las significativas
+    if (!is.na(p_val) && p_val < 0.05) {
+      
+      # Convertimos a dataframe para ggplot
+      df_heat <- as.data.frame(tbl)
+      colnames(df_heat) <- c("Eje_Y", "Eje_X", "Frecuencia")
+      
+      # Heatmap
+      p_grafico <- ggplot(df_heat, aes(x = Eje_X, y = Eje_Y, fill = Frecuencia)) +
+        geom_tile(color = "white") +
+        scale_fill_gradient(low = "#f7fbff", high = "#084594") +
+        labs(title = paste(v1, "vs", v2),
+             subtitle = paste("p-valor (Chi-cuadrado):", format.pval(p_val, digits = 4)),
+             x = v2, y = v1, fill = "Frecuencia") +
+        theme_minimal() +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+      
+      plot(p_grafico)
+    }
+  }
+}
+```
+
+
+Para el análisis descriptivo hay ciertas relaciones que pueden resultar interesantes. El puesto de administrativo está altamente correlacionado con las personas que tienen un grado universitario.
+
+
+### Variable numérica y variable categórica.
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide', fig.width=6, fig.height=4}
+
+library(patchwork)
+library(ggplot2)
+
+# Variables según el str() de tu dataset
+vars_num <- c("age", "duration", "campaign", "pdays", "previous")
+vars_cat <- c("job", "marital", "education", "default", "housing", "loan", "contact", "month", "day_of_week", "poutcome", "y")
+
+lista_graficos <- list()
+
+for (v_cat in vars_cat) {
+  for (v_num in vars_num) {
+    
+    # Preparación de datos
+    datos_temp <- muestra[!is.na(muestra[[v_num]]) & !is.na(muestra[[v_cat]]), ]
+    datos_temp <- muestra %>% filter(pdays != 999)
+
+    
+    # Test de significancia
+    test_res <- try(kruskal.test(datos_temp[[v_num]] ~ as.factor(datos_temp[[v_cat]])), silent = TRUE)
+    
+    if (!inherits(test_res, "try-error")) {
+      p_val <- test_res$p.value
+      
+      # Filtro exigente: solo p-valores muy pequeños para no saturar
+      if (!is.na(p_val) && p_val < 0.001) {
+        
+        # Calcular límite para evitar que los outliers aplasten la caja
+        limite_y <- quantile(datos_temp[[v_num]], 0.95, na.rm = TRUE)
+        
+        # Crear gráfico
+        p <- ggplot(datos_temp, aes(x = .data[[v_cat]], y = .data[[v_num]], fill = .data[[v_cat]])) +
+          geom_boxplot(outlier.shape = NA) + 
+          coord_cartesian(ylim = c(min(datos_temp[[v_num]]), limite_y)) +
+          labs(title = paste(v_num, "vs", v_cat), 
+               subtitle = paste("p-val:", format.pval(p_val, digits = 2))) +
+          theme_minimal(base_size = 8) +
+          theme(axis.text.x = element_text(angle = 45, hjust = 1),
+                legend.position = "none") +
+          scale_fill_viridis_d(option = "mako")
+
+        lista_graficos[[length(lista_graficos) + 1]] <- p
+        
+        # Cuando hay 4, imprimimos el mosaico
+        if (length(lista_graficos) == 4) {
+          # EL TRUCO: plot() fuerza el renderizado y evita el texto S4
+          plot(wrap_plots(lista_graficos, ncol = 2, nrow = 2))
+          lista_graficos <- list() 
+        }
+      }
+    }
+  }
+}
+
+# Imprimir los últimos si quedaron menos de 4
+if (length(lista_graficos) > 0) {
+  plot(wrap_plots(lista_graficos, ncol = 2))
+}
+```
+
+
+## Descripción de las principales dificultades
+
+En primer lugar, la presencia de multicolinealidad entre las variables numéricas económicas ha sido el problema más relevante. A partir de la matriz de correlaciones de Spearman, se detectaron correlaciones muy elevadas entre euribor3m, emp.var.rate y nr.employed. Dado que estas tres variables contienen información prácticamente redundante, en fases posteriores del análisis será necesario considerar la eliminación de alguna de ellas o combinarlas mediante técnicas de reducción de dimensionalidad para evitar problemas en los modelos estadísticos.
+
+En segundo lugar, la variable pdays presentó una distribución muy particular, con la gran mayoría de valores iguales a 999, indicando que el cliente no había sido contactado previamente. Esto dificultó su tratamiento como variable continua estándar y condicionó su interpretación en las relaciones con otras variables.
+
+En tercer lugar, en el análisis de variables categóricas mediante tablas de contingencia y el test chi-cuadrado, algunas combinaciones de categorías poco frecuentes generaron frecuencias esperadas muy bajas, lo que puede comprometer la validez del test en esos casos concretos. Sus resultados deben interpretarse con cautela.
+
+
+## Principales conocimientos obtenidos del análisis bivariante
+
+Respecto a las variables numéricas, se ha confirmado que las variables económicas (euribor3m, emp.var.rate, nr.employed y cons.price.idx) están fuertemente correlacionadas entre sí, lo que indica que todas reflejan el mismo contexto macroeconómico y contienen información redundante. También se ha observado una relación inversa entre pdays y previous: cuanto más tiempo ha pasado desde el último contacto previo, menor tiende a ser el número de contactos anteriores registrados, lo cual tiene sentido desde el punto de vista del proceso de campaña.
+
+En cuanto a las variables categóricas, los tests chi-cuadrado han revelado que la mayoría de las parejas de variables presentan asociaciones estadísticamente significativas. Destaca especialmente la relación entre el tipo de trabajo y el nivel educativo, lo que confirma que el perfil socioeconómico del cliente es una característica coherente y estructurada. Asimismo, se ha observado que el tipo de contacto y el mes de la llamada están relacionados con el resultado de campañas anteriores, lo que sugiere que el contexto y el momento de la campaña influyen en el comportamiento del cliente.
+
+Finalmente, el análisis conjunto de variables numéricas y categóricas ha mostrado que la edad está significativamente relacionada con el tipo de trabajo y el estado civil, y que la duración de la llamada presenta diferencias según la respuesta final del cliente, apuntando a que las interacciones más largas tienden a asociarse con una mayor probabilidad de respuesta positiva.
+
+
+
+\newpage
+
+# Clustering 
+
+## Particional
+
+Para el análisis particional hemos seleccionado los algoritmos \textbf{K-means} y \textbf{PAM}. La elección de estos dos métodos es para contrastar la estabilidad de los grupos: K-means es ideal para identificar estructuras esféricas y compactas, mientras que PAM ofrece una mayor robustez frente a valores extremos al trabajar con medoides.
+
+\textbf{Selección de hiperparámetros ($k$):}
+Utilizaremos los criterios de \textit{WSS (Within Sum of Squares)} y la \textit{Silueta}:
+
+```{r,echo=FALSE}
+library(factoextra)
+library(cluster)
+
+# solo numéricas
+muestra_cluster <- muestra %>% 
+  select(where(is.numeric)) %>% 
+  scale()
+
+colnames(muestra_cluster)
+
+# determinació de k (Elbow i Silhouette)
+p1 <- fviz_nbclust(muestra_cluster, kmeans, method = "wss") + 
+  labs(title = "Método del Codo (WSS)")
+p2 <- fviz_nbclust(muestra_cluster, kmeans, method = "silhouette") + 
+  labs(title = "Método de la Silueta")
+
+grid.arrange(p1, p2, ncol = 2)
+```
+El análisis WSS muestra un punto de inflexión claro en \textit{k=3}, donde la inercia intragrupo comienza a estabilizarse. Por otro lado, aunque el índice de la Silueta alcanza su máximo global en \textit{k=2}. Seleccionaremos textbf{k=3} como hiperparámetro final, ya que esto nos permitirá una segmentación más rica y con mayor sentido de negocio (nuestro dataset), manteniendo una estructura de grupos cohesiva.
+
+```{r,echo=FALSE}
+set.seed(123)
+# execució K-means
+km_res <- kmeans(muestra_cluster, centers = 3, nstart = 25)
+
+#execució PAM
+pam_res <- pam(muestra_cluster, k = 3)
+
+fviz_cluster(km_res, data = muestra_cluster,
+             ellipse.type = "convex",
+             palette = "jco",
+             ggtheme = theme_minimal(),
+             main = "Clustering Particional: K-means (k=3)")
+```
+Vemos tres estructuras claras:
+\begin{itemize}
+    \item El \textbf{Clúster 1} aparece como un grupo altamente cohesionado y segregado en el eje de la Dim1, lo que sugiere un perfil de cliente con un comportamiento de respuesta muy diferenciado (fidelizados).
+    \item Los \textbf{Clústeres 2 y 3} muestran una mayor proximidad entre sí, con un ligero solapamiento en sus fronteras. Esto indica que la transición entre estos dos perfiles (basada posiblemente en edad o intensidad de la campaña) es más continua.
+\end{itemize}
+
+```{r,echo=FALSE}
+fviz_cluster(pam_res, main = "Clustering Particional: PAM (k=3)")
+```
+Como hemos mencionado antes, PAM utiliza \textit{medoides} (puntos reales de la muestra) como centros de los clústeres, lo que reduce la sensibilidad del modelo ante valores atípicos o \textit{outliers} presentes en variables como \textit{duration} o \textit{campaign}.
+
+En la gráfica vemos la proyección de los datos sobre las dos primeras componentes principales, que explican un \textbf{53,6\%} de la varianza total de la muestra:
+\begin{itemize}
+    \item \textbf{Dimensión 1 (32,4\%):} Actúa como el principal factor de discriminación, separando claramente al \textbf{Clúster 1} del resto. Esta dimensión captura principalmente la variabilidad ligada al historial de contactos previos.
+    \item \textbf{Dimensión 2 (21,2\%):} Aporta una segunda capa de información que permite perfilar las diferencias entre los \textbf{Clústeres 2 y 3}, basándose en la intensidad de la campaña y variables demográficas.
+\end{itemize}
+
+La capacidad del gráfico para representar más de la mitad de la varianza total (\textbf{53,6\%}) valida la interpretación visual de los grupos. Entonces sí hay existencia de un segmento de clientes altamente diferenciado y dos grupos con características más transversales que requieren estrategias de marketing distintas.
+
+Después de contrastar los resultados de \textbf{K-means} y \textbf{PAM} para asegurar la estabilidad de la segmentación, hemos visto que K-means destaca por su eficiencia en grandes volúmenes de datos, el algoritmo \textbf{PAM} aporta una mayor robustez analítica en este conjunto de datos específico. Al utilizar \textit{medoides} (puntos reales) en lugar de centroides calculados, PAM mitiga el impacto de los valores atípicos presentes en variables de alta dispersión como \textit{duration} o \textit{campaign}, y gestiona de forma más coherente los valores extremos de la variable \textit{pdays}.
+
+## Jerárquico
+Para el clustering jerárquico, utilizaremos una estrategia aglomerativa fundamentada en los siguientes criterios técnicos:
+
+\begin{itemize}
+    \item \textbf{Distancia euclídea:} Seleccionamos esta métrica de disimilitud al ser la medida geométrica estándar para variables numéricas. Como los datos han sido estandarizados previamente, la distancia euclídea permite que todas las variables contribuyan equitativamente al cálculo de la separación entre individuos, evitando que las variables con magnitudes mayores (como \textit{pdays}) dominen el análisis.
+    
+   \item \textbf{Método agregación de Ward (Ward.D2):} Hemos elegido el método de Ward debido a su capacidad para minimizar la pérdida de información en cada etapa de la agrupación. A diferencia de otros métodos de enlace, Ward tiende a generar clústeres compactos, esféricos y con tamaños equilibrados. Esta característica es esencial para una segmentación de marketing, nuestro caso, efectiva, ya que facilita la definición de perfiles de cliente claros y accesibles.
+\end{itemize}
+
+
+### Árbol jerárquico
+
+```{r,echo=FALSE}
+idx <- sample(1:nrow(muestra_cluster), 1000)
+hc_sub <- hclust(dist(muestra_cluster[idx,]), method = "ward.D2")
+
+plot(hc_sub, labels = FALSE, hang = -1, 
+     main = "Dendrograma de Clientes (Método de Ward)",
+     xlab = "Observaciones (Submuestra n=1000)",
+     ylab = "Altura (Distancia de Ward)")
+
+# 1 = Negro, 2 = Rojo/Amarillo, 3 = Verde, 4 = Azul
+rect.hclust(hc_sub, k = 3, border = c("orange", "darkgreen", "blue"))
+```
+
+Con el dendrograma obtenido mediante el método de Ward, se ha validado la estructura de \textbf{3 clases}, resaltadas mediante un corte horizontal en el eje de altura (\textit{height}). Esta partición permite diferenciar claramente los perfiles de comportamiento de la muestra:
+
+\begin{itemize}
+    \item \textbf{Clúster azul:} Ocupa la mayor parte de la base del dendrograma. Representa el perfil de cliente estándar o mayoritario del banco, caracterizado por una receptividad media y, fundamentalmente, por no haber sido contactado con éxito en campañas anteriores.
+    
+   \item \textbf{Clúster naranja:} Este agrupa a un segmento reducido de clientes con una conducta específica durante la campaña actual. Destaca por presentar una presión comercial elevada (mayor número de contactos en \textit{campaign}) o por pertenecer a nichos demográficos muy concretos que los separan del promedio.
+    
+  \item \textbf{Clúster verde:} Finalmente, este representa el grupo de clientes fidelizados o con resultados positivos en el pasado. Este grupo es pequeño pero altamente diferenciado.
+\end{itemize}
+
+El gráfico confirma que, aunque la mayoría de los clientes siguen un patrón común (Azul), existen dos nichos específicos (Naranja y Verde) que requieren estrategias de comunicación y oferta diferenciadas.
+
+\newpage
+
+# Profiling
+
+El objetivo del profiling es interpretar y caracterizar los grupos obtenidos en el clustering: las técnicas como K-Means y PAM aplicadas anteriormente nos permiten identificar estructuras internas en los datos, pero el profiling nos permite darles significado. 
+
+Por este motivo, partimos del conjunto de datos utilizado en el clustering, al que se le añade la variable `cluster`, que indica la pertenencia de cada observación a uno de los grupos identificados. 
+
+Utilizaremos el profiling para PAM, ya que es un método más robusto y nos dará mejores resultados. 
+
+```{r,echo=FALSE}
+dades_profile <- muestra
+dades_profile$cluster <- as.factor(pam_res$clustering)
+```
+
+
+## Visualizar las relaciones entre parejas de variables y clases
+
+### Fase 1: Significación de las variables 
+
+En esta primera fase pretendemos identificar qué variables permiten diferenciar de forma significativa los distintos clústeres. Para ello, se consideran todas las variables del conjunto excepto la variable `cluster`. 
+
+```{r,echo=FALSE}
+columnasValidar <- colnames(dades_profile)[which(!colnames(dades_profile) 
+                                                %in% c("cluster"))]
+```
+
+Aplicamos la función vista en clase que nos permite:
+
+* **Para variables numéricas:**
+
+  * Evaluar la normalidad mediante el test de Shapiro- Wilk.
+  
+  * Si la variable sigue una distribución normal, se aplica un ANOVA.
+  
+  * En caso contrario, se utiliza el test no paramétrico de Kruskal-Wallis.
+  
+* **Para variables categóricas:**
+
+  * Se aplica el test chi-cuadrado de independencia, que permite analizar si hay relación entre variable y clúster. 
+  
+Para seleccionar estas variables usamos el p.valor. Si este es menor de 0.05, rechazamos la hipótesis nula de igualdad, por lo que la variable se considera significativa. En caso contrario, no se considera relevante para diferenciar los grupos. 
+
+```{r,warning=FALSE,include=FALSE}
+variablesPasanFase1 <- c()
+
+for (cV in columnasValidar) {
+  
+  # Variables numéricas
+  if (class(dades_profile[, cV]) %in% c("integer", "numeric")) {
+    
+    # Distribución normal o no
+    testSH <- shapiro.test(dades_profile[, cV])
+    
+    if (testSH$p.value > 0.05) {
+      # Si la distribución es normal, hacer ANOVA
+      anova <- aov(dades_profile[, cV] ~ dades_profile[, "cluster"])
+      cat("============ ", cV, " ================\n")
+      print(anova); cat("\n")
+      
+      p_valor <- summary(anova)[[1]][["Pr(>F)"]][1]
+      if (p_valor <= 0.05) {
+        variablesPasanFase1 <- c(variablesPasanFase1, cV)
+      }
+      
+    } else {
+      # Si la distribución no es normal, hacer Kruskal-Wallis
+      test <- kruskal.test(dades_profile[, cV] ~ dades_profile[, "cluster"])
+      cat("============ ", cV, " ================\n")
+      print(test); cat("\n")
+      
+      if (test$p.value <= 0.05) {
+        variablesPasanFase1 <- c(variablesPasanFase1, cV)
+      }
+    }
+  }
+  
+  # Si la variable es categórica
+  if (class(dades_profile[, cV]) %in% c("factor", "character")) {
+    
+    # Test de chi-cuadrado
+    test <- chisq.test(dades_profile[, cV], dades_profile[, "cluster"])
+    cat("============ ", cV, " ================\n")
+    print(test); cat("\n")
+    
+    # Nos quedamos las variables con p-valor < 0.05
+    if (test$p.value <= 0.05) {
+      variablesPasanFase1 <- c(variablesPasanFase1, cV)
+    }
+  }
+}
+
+```
+
+Una vez aplicada la función, observamos las variables que resultan significativas.
+
+```{r,echo=FALSE}
+variablesPasanFase1
+```
+
+En este caso 18 de las 22 variables resultan significativas, lo cual podría indicar que los clústers presentan diferencias relevantes en varias dimensiones y que no existe una única variable que explique estos grupos. 
+
+
+Una vez identificadas las variables significativas en la Fase 1, se procede a analizar cómo se distribuyen las variables numéricas dentro de cada clúster. 
+
+Para conseguirlo, usamos la función `psych::describeBy`, que permite obtener los principales estadísticos descriptivos de cada variable para cada grupo de clusterización. Primero lo hacemos para las numéricas: 
+
+```{r,echo=FALSE,include=FALSE}
+datosAnalizarNum <- dades_profile[, variablesPasanFase1[which(variablesPasanFase1 %in% varNum)]]
+psych::describeBy(datosAnalizarNum, dades_profile[, "cluster"])
+
+
+vars_numericas_reales <- variablesPasanFase1[
+  variablesPasanFase1 %in% names(dades_profile) &
+  sapply(dades_profile[variablesPasanFase1], is.numeric)
+]
+
+resumen <- dades_profile %>%
+  dplyr::group_by(cluster) %>%
+  dplyr::summarise(
+    dplyr::across(
+      dplyr::all_of(vars_numericas_reales),
+      list(
+        mean = ~mean(.x, na.rm = TRUE),
+        sd   = ~sd(.x, na.rm = TRUE)
+      ),
+      .names = "{.col}_{.fn}"
+    )
+  )
+library(dplyr)
+library(tidyr)
+library(knitr)
+library(kableExtra)
+
+tabla_bonita <- dades_profile %>%
+  group_by(cluster) %>%
+  summarise(
+    across(all_of(vars_numericas_reales), ~mean(.x, na.rm = TRUE)),
+    .groups = "drop"
+  ) %>%
+  pivot_longer(-cluster, names_to = "variable", values_to = "media") %>%
+  pivot_wider(names_from = cluster, values_from = media, names_prefix = "Cluster_")
+```
+
+La salida de la función ocupa mucho espacio, para solventar este problema, hemos creado una tabla resumen con las medias de variables por clústers. 
+
+```{r,echo=FALSE, results='asis'}
+kable(tabla_bonita, digits = 2,
+      caption = "Medias numéricas de variables por clúster",
+      booktabs = TRUE, format = "latex") %>%
+  kable_styling(latex_options = c("hold_position")) %>%
+  row_spec(0, bold = TRUE)
+```
+
+A partir de los estadísticos descriptivos obtenidos, observamos diferencias claras entre los tres clústeres en varias variables o dimensiones: 
+
+* **Grupo 1:**  Jóvenes (edad media de 33 años), sin experiencia previa en la campaña (previous = 0) y comportamiento moderado (duration = 253).
+
+* **Grupo 2:** Individuos de mayor edad (media de 50 años), también sin contacto previo (previous = 0), pero con características similares al clúster 1 en comportamiento. 
+
+* **Grupo 3:** Grupo más pequeño y diferenciado, con contactos previos, menor precisión en campaña y mayor duración de la interacción. 
+  
+  
+Una vez analizadas las numéricas, procedemos a estudiar las categóricas con el objetivo de identificar los factores predominantes en cada clúster. Para eso, calculamos la moda de cada variable categórica dentro de cada grupo, es decir, la categoría más frecuente en cada clúster. 
+
+
+```{r,echo=FALSE}
+listaModa <- list()
+
+variablesAnalizarCAT <- variablesPasanFase1[which(variablesPasanFase1 %in% varCat)]
+
+tabla_modas <- lapply(variablesAnalizarCAT, function(vC) {
+  
+  tabla <- dades_profile %>%
+    count(cluster, !!sym(vC), name = "Freq")
+  
+  moda <- tabla %>%
+    group_by(cluster) %>%
+    filter(Freq == max(Freq)) %>%
+    slice(1) %>%   # por si hay empates
+    ungroup() %>%
+    mutate(variable = vC) %>%
+    rename(categoria = !!sym(vC)) %>%
+    select(variable, cluster, categoria)
+  
+  return(moda)
+}) %>%
+  bind_rows() %>%
+  pivot_wider(names_from = cluster, values_from = categoria, names_prefix = "Cluster_")
+
+kable(tabla_modas,
+      caption = "Categorías más frecuentes por variables y clúster",
+      booktabs = TRUE,
+      format = "latex",
+      align = c("l", "c", "c", "c")) %>%
+  kable_styling(latex_options = c("hold_position")) %>%
+  row_spec(0, bold = TRUE)
+```
+
+A partir de los resultados obtenidos, observamos los siguientes patrones:
+
+* Algunas variables presentan la misma modalidad dominante en los tres grupos:  predominan individuos casados en todos los clústers, los estudios universitarios, la mayoría no presenta impagos y predomina el contacto vía móvil. Esto indica que estas variables carecen de poder discriminante entre los clústeres, aunque fueran significativas en la fase 1. 
+
+* Hay algunas variables que sí que diferencian a los clústers: 
+
+  * `job`: El clúster 2 presenta un perfil laboral distinto, más orientado a trabajos manuales.
+  
+  * `month`: El clúster 3 se sitúa en un momento temporal diferente, esto puede indicar un contexto distinto de campaña.
+  
+  * `poutcome`: Entre los clústeres 1 y 2 predominan los que no tienen historial previo de clientes, a diferencia del clúster 3, dónde se registran clientes con experiencia previa exitosa. 
+  
+  * `y`: El clúster 3 concentra la respuesta positiva a la campaña, lo que lo convierte en el grupo más interesante desde el punto de vista del negocio. 
+
+
+En conjunto, las variables categóricas permiten identificar que la principal diferencia entre los clústeres no solo es demográfica, sino también en cuanto al historial con la campaña y de respuesta. Siendo el clúster 3 el grupo claramente diferenciado (cómo observábamos en los gráficos de los clusters), formado por clientes con experiencia previa exitosa, mayor interacción y mayor probabilidad de respuesta positiva. 
+
+
+### Fase 2: Caracterización de los clústers
+
+En la Fase 1 hemos visto qué variables diferencian los clústeres. En la fase 2 tenemos el objetivo de caracterizar en mayor detalle los clústeres obtenidos, para ello, se ha aplicado la función `catdes`. Esta nos permite identificar, de forma automática, qué variables y que modalidades están significativamente asociadas a cada grupo.
+
+Como en los casos anteriores, estas funciones son para exploración y las salidas ocupan mucho espacio, para evitar esto, usaremos tablas resúmenes de cada parte. 
+
+
+```{r,echo=FALSE}
+res_catdes <- FactoMineR::catdes(dades_profile, num.var = ncol(dades_profile))
+```
+
+```{r,echo=FALSE}
+res_num_top <- purrr::imap_dfr(res_catdes$quanti, function(tab, clu) {
+  
+  if (is.null(tab) || nrow(as.data.frame(tab)) == 0) return(NULL)
+  
+  tab <- as.data.frame(tab)
+  tab$variable <- rownames(tab)
+  tab$cluster <- clu
+  
+  tab
+}) %>%
+  filter(p.value < 0.05) %>%
+  group_by(cluster) %>%
+  slice_min(order_by = p.value, n = 5) %>%
+  ungroup() %>%
+  select(cluster, variable, everything()) %>%
+  arrange(cluster, p.value)
+
+kable(res_num_top,
+      digits = 3,
+      caption = "Variables numéricas más significativas por clúster",
+      booktabs = TRUE,
+      format = "latex") %>%
+  kable_styling(latex_options = c("hold_position", "scale_down"))
+```
+
+
+
+Los resultados confirman que las variables más relevantes para la diferenciación entre clústeres son `age`, `pdays`, `previous`, `poutcome` y `y`. Esto refuerza las conclusiones que hemos obtenido en la Fase 1. 
+
+En particular, el clúster 1 se asocia con individuos jóvenes, solteros y sin historial previo de campaña; el clúster 2 con individuos de mayor edad, casados y retirados; y el clúster 3 con clientes previamente contactados con éxito, mayor probabilidad de respuesta positiva y menor número de contactos necesarios en la campaña actual.
+
+
+## Visualizaciones en mapas de clases
+
+Para complementar la interpretación de los clústeres, representaremos los mapas de clases obtenidos con `catdes`.
+
+```{r, include=FALSE, message=FALSE}
+png("catdes_quanti.png", width = 1200, height = 900, res = 150)
+plot(res_catdes, show = "quanti",
+     col.upper = "red", col.lower = "blue",
+     barplot = TRUE, cex.names = 1)
+dev.off()
+```
+
+```{r,echo=FALSE,out.width="60%", fig.align="center"}
+knitr::include_graphics("catdes_quanti.png")
+```
+
+
+Este mapa de clases nos indica:
+
+* **Clúster 1:** Se caracteriza por una edad claramente inferior a la media global y tiene valores altos de `pdays`, mientras que `previous` está por debajo. Esto nos reafirma lo que ya sabíamos: encaja con un perfil de clientes jóvenes y sin historial previo de contacto. 
+
+* **Clúster 2:** Destaca por una edad claramente superior a la media global. Representa un perfil de clientes de mayor edad, pero igualmente sin contacto previo. 
+
+* **Clúster 3:** Presenta el patrón opuesto en `pdays` y `previous`, el primero muy por debajo y el segundo muy por encima. Esto sugiere un grupo de clientes ya conocidos, con contacto reciente, más historial y mayor probabilidad de interacción positiva. 
+
+Este mapa de clases de variables cuantitativas confirma que la principal separación entre los clústeres viene dada por la edad y la experiencia previa con la campaña. 
+
+En el siguiente gráfico, haremos un mapa de clases cualitativas: 
+
+```{r,echo=FALSE,fig.width=6, fig.height=4,fig.align='center'}
+par(mar = c(3, 3, 2, 1))  # ↓ ↓ ↓ ↓
+par(mfrow = c(1, 1))
+plot(res_catdes, show = "quali",
+     col.upper = "red", col.lower = "blue",
+     barplot = FALSE, cex.names = 1.2)
+```
+
+Aunque este gráfico es visualmente más difícil de leer, ya que hay muchas categorías, nos sirve para  reforzar la diferenciación entre grupos. En particular en el clúster 3, que concentra modalidades asociadas al éxito previo y a la respuesta positiva en la campaña actual. 
+
+Por último, haremos un mapa global con la información cualitativa y cuantitativa. 
+
+```{r,echo=FALSE,fig.width=6, fig.height=4,fig.align='center'}
+par(mar = c(3, 3, 2, 1))  # ↓ ↓ ↓ ↓
+plot(res_catdes, show = "all",
+     col.upper = "red", col.lower = "blue",
+     barplot = FALSE, cex.names = 1.2)
+```
+
+Este resume la estructura obtenida: dos grupos mayoritarios sin experiencia previa en la campaña, diferenciados principalmente por la edad, y un tercer grupo, más pequeño, pero claramente diferente, asociado a clientes previamente contactados con éxito. 
+
+
+```{r,echo=FALSE}
+library(readxl)
+dades <- read.csv2("bank-additional-full.csv",
+                   header = TRUE,
+                   sep = ";")
+
+set.seed(123) 
+muestra <- dades[sample(nrow(dades), 5000), ]
+# Convertimos las siguientes variables en numéricas: 
+vars_num <- c("emp.var.rate","cons.price.idx","cons.conf.idx",
+              "euribor3m","nr.employed")
+
+muestra[vars_num] <- lapply(muestra[vars_num], function(x)
+  as.numeric(as.character(x))
+)
+
+
+# También convertimos en factor las que deberian ser factores:
+vars_factor <- c("job","marital","education","contact",
+                 "month","day_of_week","poutcome",
+                 "default","housing","loan","y")
+
+
+muestra[vars_factor] <- lapply(muestra[vars_factor], factor)
+
+varTypes <- sapply(muestra, class)
+
+# Definimos lo que es una variable numérica
+varNum <- names(varTypes)[which(varTypes %in% c("integer", "numeric"))] 
+
+# Seleccionamos las variables numéricas
+varNum <- muestra %>% 
+  select(where(is.numeric)) %>% 
+  names 
+dades_profile<-muestra
+dades_profile$cluster <- as.factor(pam_res$clustering)
+```
+
+Para completar la caracterización de los clústeres, se usa la función `cluster.carac`, que permite identificar qué variables cuantitativas presentan diferencias significativas respecto a la media global en cada grupo. 
+
+
+```{r,echo=FALSE}
+dadesF <- FactoClass::Fac.Num(dades_profile)
+
+dades.act <- cbind(dadesF$numeric, dadesF$integer)
+class <- dadesF$factor$cluster
+
+res_co <- cluster.carac(dades.act, class, tipo.v = "co", v.lim = 1.96, neg = TRUE)
+library(dplyr)
+library(purrr)
+library(knitr)
+library(kableExtra)
+
+tabla_co <- purrr::imap_dfr(res_co, function(tab, clu) {
+  tab <- as.data.frame(tab)
+  tab$variable <- rownames(tab)
+  tab$cluster <- clu
+  tab
+}) %>%
+  group_by(cluster) %>%
+  slice_max(order_by = abs(Test.Value), n = 5) %>%
+  ungroup() %>%
+  select(cluster, variable, Test.Value, Class.Mean, Global.Mean)
+
+kable(
+  tabla_co,
+  digits = 3,
+  caption = "Top 5 variables continuas más características de cada clúster",
+  booktabs = TRUE,
+  format = "latex"
+) %>%
+  kable_styling(latex_options = c("hold_position", "scale_down")) %>%
+  row_spec(0, bold = TRUE)
+```
+
+
+```{r,echo=FALSE}
+dades.act <- dadesF$factor %>% select(-cluster)
+class <- dadesF$factor$cluster
+res_carac<-cluster.carac(dades.act, class, tipo.v = "ca", v.lim = 1.96, neg = FALSE)
+library(dplyr)
+library(purrr)
+library(knitr)
+library(kableExtra)
+library(tibble)
+
+tabla_carac <- purrr::imap_dfr(res_carac, function(tab, clu) {
+  tab <- as.data.frame(tab)
+  tab$modalidad <- rownames(tab)
+  tab$cluster <- clu
+  tab
+}) %>%
+  filter(p.Value < 0.05) %>%
+  group_by(cluster) %>%
+  slice_max(order_by = Test.Value, n = 5) %>%
+  ungroup() %>%
+  select(cluster, modalidad, Test.Value, p.Value, Class.Cat)
+
+kable(
+  tabla_carac,
+  digits = 3,
+  caption = "Top 5 modalidades más características de cada clúster",
+  booktabs = TRUE,
+  format = "latex"
+) %>%
+  kable_styling(latex_options = c("hold_position", "scale_down"))
+```
+
+Los resultados confirman los patrones observados previamente. El clúster 1 se caracteriza por individuos significativamente más jóvenes, sin experiencia previa en la campaña y sin contactos recientes. El clúster 2 agrupa individuos de mayor edad, también sin historial previo, pero asociados a valores más altos de variables económicas. 
+
+Por su parte, el clúster 3 presenta un comportamiento claramente diferenciado, con valores elevados en la variable `previous` y muy bajos en `pdays`, lo que indica contacto reciente con la identidad. Además, el grupo presenta mayor duración de interacción y menor número de intentos de contacto, lo que sugiere una mayor eficacia en la campaña. 
+
+
+\newpage
+
+# ACP
+
+Primeramente, construimos la matriz X, que contiene únicamente las variables numéricas del conjunto de datos. Este paso es necesario ya que ACP solo puede aplicarse sobre variables cuantitativas. Posteriormente, eliminamos variables con valores faltantes, puesto que la presencia de variables incompletas impediría realizar correctamente el análisis. 
+
+Seguidamente, calculamos las varianzas y las desviaciones de las variables, las cuales nos indican que están medidas en escalas diferentes, por tanto para hacer ACP necesitaremos estandarizar. 
+
+Por último, calculamos la matriz de correlaciones entre las variables numéricas y la representamos gráficamente. Esta matriz permite identificar relaciones lineales entre variables y detectar posibles multicolinealidades o redundancias. 
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(FactoMineR)
+library(factoextra)
+library(corrplot)
+
+# Matriz solo con variables numericas 
+X <- muestra[, varNum]
+
+# Eliminamos los posibles NA
+X <- na.omit(X)
+
+# Varianzas y desviaciones típicas
+var<-apply(X, 2, var)
+sd<-apply(X, 2, sd)
+
+# Correlaciones
+cors <- cor(X)
+corrplot(cors, method = "number", number.cex = 0.75)
+```
+
+Respecto a los resultados son los mismos obtenidos en el estudio bivariante.
+
+En cuanto a los resultados, observamos fuertes correlaciones entre variables económicas. En concreto, emp.var.rate, euribor3m y nr.employed, las cuales presentan correlaciones positivas muy elevadas, lo que nos indica que contienen información muy similar. 
+
+Por otro lado, la variable previous presenta correlaciones negativas con pdays y con algunas variables económicas, lo que sugiere una relación inversa entre el historial previo de contactos y el contexto económico o de campaña.
+
+## Resultados principales del análisis 
+
+Ahora procedemos a realizar el Análisis de Componentes principales sobre la matriz X utilizando la función *PCA()* y estandarizando las variables. 
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+# ACP amb dades estandarditzades
+dec.pca <- PCA(X, scale.unit = TRUE, ncp = Inf, graph = F)
+get_pca(dec.pca)
+
+# Valors propis
+eigenvals <- get_eigenvalue(dec.pca)
+
+kable(eigenvals,
+      digits = 3,
+      caption = "Valores propios de ACP",
+      booktabs = TRUE) %>%
+  kable_styling(latex_options = c("hold_position", "scale_down"))
+```
+
+Los valores propios indican cuánta variabilidad explica cada componente principal. La tabla muestra que la primera dimensión tiene un valor propio de 3.861 y explica el 38.607% de la variabilidad total. La segunda dimensión explica un 13.734%, de manera que las dos primeras componentes acumulan un 52.341% de la variabilidad. Si se añaden la tercera y la cuarta dimensión, la variabilidad acumulada alcanza el 73.857%. A partir de la quinta dimensión, el valor propio es inferior a 1, por lo que estas componentes aportan menos información que una variable original estandarizada.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+# Screeplot
+fviz_eig(dec.pca, addlabels = TRUE, ylim = c(0, 60), 
+         main = "Screeplot de l'ACP")
+```
+El screeplot muestra el porcentaje de varianza explicada por cada una de las componentes principales. Observamos claramente que la primera componente explica una proporción muy elevada de variabilidad total (38.6%), lo que nos indica que recoge gran parte de la información del conjunto de los datos. 
+
+A partir de la segunda componente, la varianza explicada disminuye de forma notable (13.7%), y continúa disminuyendo progresivamente en las siguientes dimensiones. 
+
+Visualmente podemos apreciar una especie de codo en el gráfico entre la segunda y la tercera componente. A partir de este punto llamado codo, la reducción de varianza explicada es más suave, lo que sugiere que las componentes adicionales aportan información cada vez menos relevante.
+
+Por tanto, para la interpretación gráfica y conceptual del ACP, utilizaremos principalmente las dos primeras componentes, ya que permiten una representación en un número manejable de componentes manteniendo una cantidad significativa de información. No obstante, las componentes tercera y cuarta también podrían considerarse en análisis más detallados.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+# Resultados de las variables
+pca.vars <- get_pca_var(dec.pca)
+
+# Círculo de correlaciones
+fviz_pca_var(dec.pca, col.var = "contrib", gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), title = "Círculo de correlaciones del ACP")
+```
+El círculo de correlaciones representa la relación entre variables originales y las dos primeras componentes principales. En la primera dimensión, observamos que variables como emp.var.rate, euribor3m, nr.employed y cons.price.idx están fuertemente alineadas en la misma dirección. Esto nos confirma los resultados obtenidos previamente, que están altamente correlacionadas positivamente y que contribuyen de forma importante a esta dimensión. Por tanto, podríamos interpretar la primera componente como un eje asociado al contexto económico. 
+
+Por otro lado, variables como previous aparecen en dirección opuesta respecto a estas variables económicas, lo que indica una correlación negativa. Esto sugiere que un mayor número de contactos previos se asocia a valores más bajos en variables económicas. 
+
+En la segunda dimensión destaca pdays, que representa una contribución relevante en dirección negativa. Las variables cons.conf.idx y cons.price.idx también presentan contribuciones importantes positivas aunque en menor medida. 
+
+Las variables age, duration y campaign se encuentran cercanas al origen, esto indica que están peor representadas por las dos primeras dimensiones y, por tanto, su contribución es menor. 
+
+En conclusión, el gráfico nos permite identificar bien dos grandes bloques: por un lado un bloque constituido por variables económicas fuertemente correlacionadas entre sí, y por otro lado, variables relacionadas con el cliente. 
+
+### Contribución de las variables 
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE,fig.show='hold', fig.width=5, fig.height=4, out.width='48%', fig.align='center'}
+# Contribuciones la dimensión 1
+fviz_contrib(dec.pca, choice = "var", axes = 1, top = 10)
+
+# Contribuciones a la dimensión 2
+fviz_contrib(dec.pca, choice = "var", axes = 2, top = 10)
+
+# Contribución conjunto a las dimensiones 1 y2
+fviz_contrib(dec.pca, choice = "var", axes = 1:2, top = 10)
+```
+Estos gráficos de contribución nos permite identificar qué variables son las más importantes en la construcción de cada dimensión. En la primera dimensión, las variables que más contribuyen son euribor3m, emp.var.rate y nr.employed, seguidas de cons.price.idx. Todas ellas superan la contribución media representada por la línea roja. Este hecho nos confirma la interpretación de la dimensión uno dentro de un contexto económico. 
+
+En la segunda dimensión, las variables que más contribuyen son pdays, seguida de previous. Esto indica que esta dimensión está principalmente relacionada con el historial de contacto con el cliente y ciertos aspectos de percepción económica.
+
+Si consideramos conjuntamente las dimensiones 1 y 2, las variables más influyentes son emp.var.rate, euribor3m, nr.employed, pdays y previous. Estas variables son las que mejor explican la estructura de los datos. 
+
+La calidad de representación ($cos^2$) indica qué tan bien quedan representadas las variables en el plano formado por las dos primeras componentes.
+
+
+### Calidad de la representación 
+
+```{r,echo=FALSE, warning=FALSE, message=FALSE}
+# Calidad de la representación
+corrplot(pca.vars$cos2, is.corr = FALSE)
+fviz_cos2(dec.pca, choice = "var", axes = 1:2)
+```
+
+Observamos que emp.var.rate, euribor3m y nr.employed presentan valores de $cos^2$ muy elevados, cercanos a 1, lo que indica que están muy bien representadas en el plano constituido por las dimensiones 1 y 2. También pdays y previous muestran una buena calidad de representación.
+
+Por el contrario, como hemos mencionado anteriormente, las variables age, duration y campaign tienen valores bajos de $cos^2$, lo que indica que están peor representadas y su interpretación es limitada. 
+
+
+### Descripción de las dimensiones
+
+La descripción de las dimensiones permite identificar qué variables están más asociadas a cada componente principal y si esta relación es estadísticamente significativa.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, include=FALSE}
+# Descripción de las dimensiones
+res.desc <- dimdesc(dec.pca, axes = 1:3, proba = 0.05)
+res.desc$Dim.1
+res.desc$Dim.2
+res.desc$Dim.3
+```
+
+En la primera dimensión las variables más correlacionadas son euribor3m, emp.var.rate y nr.employed, con valores de correlación muy elevados y p-valores prácticamente nulos. 
+
+En la segunda dimensión, destacan principalmente previous y pdays, lo que indica que esta dimensión está asociada al historial de contacto con el cliente. 
+
+Añadimos la tercera dimensión para detallar nuestro análisis, pero observamos que las variables relevantes son menos claras y presentan una menor capacidad explicativa.
+
+## Interpretación de las relaciones entre variables y entre individuos
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+# Individuos
+ind <- get_pca_ind(dec.pca)
+
+# Cos2
+fviz_pca_ind(dec.pca, col.ind = "cos2", pointsize = "cos2", gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), repel = TRUE)
+
+# Contribución
+fviz_pca_ind(dec.pca, col.ind = "contrib", pointsize ="contrib", 
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), repel = TRUE)
+
+fviz_contrib(dec.pca, choice = "ind", axes = 1:2, top = 10)
+```
+
+En el gráfico basado en el $cos^2$, vemos como los individuos mejor representados, es decir, los que tienen un color más intenso y mayor tamaño, son aquellos situados más lejos del origen. Por el contrario, los individuos cercanos al centro presentan baja calidad de representación. 
+
+En cuanto a la contribución, observamos que solo un pequeño grupo de individuos tiene una contribución destacada en la formación de las dimensiones. Estos individuos se sitúan en extremos del gráfico y son los más influyentes en la construcción de las dimensiones. Este hecho nos muestra que la mayoría de individuos presentan aportaciones bajas. 
+
+En conjunto, los individuos extremos son los que determinan la estructura del ACP, mientras que la mayoría de observaciones se agrupan alrededor del perfil medio.
+
+El biplot nos permite interpretar a la vez la relación entre variables e individuos en las dos primeras componentes principales. 
+
+```{r,echo=FALSE, warning=FALSE, message=FALSE}
+# Biplot
+fviz_pca_biplot(dec.pca, axes = c(1,2), col.var = "#2E9FDF",
+col.ind = "#696969", select.ind = list(contrib = 20),
+select.var = list(contrib = 10), repel = TRUE, title = "Biplot del ACP")
+```
+En este gráfico, observamos que las variables económicas como emp.var.rate, euribor3m, nr.employed y cons.price.idx apuntan en la misma dirección, lo que confirma su correlación altamente positiva y su importancia dentro de la primera dimensión. 
+
+Por otra parte, las variables previous y pdays aparecen en dirección contraria, indicando una relación negativa con el grupo de variables económicas. 
+
+En cuanto a los individuos, aquellos situados en la dirección de las variables económicas presentan valores más elevados en esas variables, mientras que los situados en dirección opuesta muestran valores más bajos. De la misma forma, individuos con direcciones similares a la de pdays o previous presentan características asociadas al historial de contacto. 
+
+Además, los individuos más alejados del origen son los más diferenciados y los que mejor se explican por las dos dimensiones principales, mientras que los cercanos al medio representan un perfil medio del individuo. 
+
+## Conclusiones
+
+En conclusión, el ACP nos ha permitido reducir la dimensión del conjunto de variables identificando las principales fuentes de variabilidad. Los resultados muestran una estructura clara constituida por dos grandes grupos: una primera dimensión asociada a variables económicas y definida por variables como emp.var.rate y euribor3m, y una segunda dimensión relacionada con el historial del cliente donde destacan variables como previous. La mayoría de individuos presentan perfiles cercanos a la media, mientras que los más extremos nos ayudan a formar la estructura del análisis. 
+
+\newpage
+
+# ACM
+
+El Análisis de Correspondencias Múltiples se aplica sobre las variables cualitativas del conjunto de datos con el objetivo de analizar las relaciones entre las distintas categorías. Éste nos ayuda a analizar las dependencias entre variables categóricas y a reducir la dimensionalidad. 
+
+```{r, echo=FALSE}
+library("FactoMineR")
+library("factoextra")
+library("corrplot")
+```
+
+## Resultados principales del análisis 
+
+Antes de realizar el ACM, revisamos las variables cualitativas para detectar categorías problemáticas. Aunque tras el preprocesamiento no había valores NA explícitos, algunas variables contenían la categoría unknown, que representa información no disponible y no es una categoría interpretable. 
+
+Por tanto, hemos decidido tratar unknown como un valor faltante y después eliminar las observaciones incompletas únicamente para este análisis. 
+
+```{r,echo=FALSE, warning=FALSE, message=FALSE}
+# Variables cualitativas
+X_cat <- muestra[, varCat]
+
+# Convertimos "unknown" en NA porque representa información no disponible
+X_cat[X_cat == "unknown"] <- NA
+
+# Eliminamos filas con NA solo para el ACM
+X_cat <- na.omit(X_cat)
+
+# Eliminamos niveles vacíos
+X_cat <- droplevels(X_cat)
+# Asegurar que todas son factor y eliminar niveles vacíos
+X_cat <- droplevels(data.frame(lapply(X_cat, factor)))
+
+# Eliminar variables categóricas con un solo nivel
+X_cat <- X_cat[, sapply(X_cat, function(x) nlevels(as.factor(x)) > 1)]
+
+tabla_freq <- muestra[, varCat] %>%
+  pivot_longer(cols = everything(), names_to = "Variable", values_to ="Categoria") %>%
+  count(Variable, Categoria) %>%
+  group_by(Variable) %>%
+  mutate(Proporcion = round(n / sum(n), 3)) %>%
+  arrange(Variable, desc(Proporcion))
+
+tabla_freq %>%
+  kable(caption = "Frecuencias relativas de variables cualitativas") %>%
+  kable_styling(latex_options = c("hold_position", "scale_down"))
+```
+Para realizar el ACM nos basaremos en el método basado en la matriz indicadora. No obstante, sabemos que en el ACM los valores propios tienden a sobreestimar la varianza explicada, por este motivo consideramos la corrección de Benzécri sobre los valores propios. 
+
+```{r,echo=FALSE, warning=FALSE, message=FALSE}
+# ACM
+res.mca <- MCA(X_cat, method = "Indicator", graph = FALSE)
+```
+
+A partir del resumen, observamos que la variabilidad explicada por cada dimensión es relativamente baja y se distribuye de forma más uniforme en el ACP. En concreto, la primera dimensión explica aproximadamente un 5.45% de la varabilidad, mientras que la segunda dimensión un 4.47%, acumulando ambas tan solo un 9.92%. 
+
+```{r,echo=FALSE, warning=FALSE, message=FALSE}
+# Correcció de Benzécri
+eigen_values <- res.mca$eig[,1]
+p <- ncol(X_cat)
+threshold <- 1/p
+
+relevant <- eigen_values[eigen_values > threshold]
+
+eigen_benzecri <- ((p/(p-1)) * (relevant - threshold))^2
+percent_benzecri <- eigen_benzecri / sum(eigen_benzecri) * 100
+```
+
+Para determinar el número de dimensiones, utilizamos distintos criterios. En primer lugar, consideraremos aquellas dimensiones con valores superiores a $1/p$, donde $p$ es el número de variables categóricas. 
+
+En segundo lugar, nos basaremos en el Screeplot. El Screeplot muestra la variabilidad explicada por cada dimensión del ACM, entonces escogeremos el punto en el que haya una clara caída de la varianza explicada, es decir, el codo. 
+
+```{r,echo=FALSE, warning=FALSE, message=FALSE, include=FALSE}
+eig <- get_eigenvalue(res.mca)
+p <- ncol(X_cat)
+threshold <- 1/p
+eig <- as.data.frame(get_eigenvalue(res.mca))
+
+eig$Supera_umbral <- eig$eigenvalue > (1/ncol(X_cat))
+eig$Dim <- rownames(eig)
+
+eig[, c("Dim", "eigenvalue", "Supera_umbral")]
+
+fviz_screeplot(res.mca, addlabels = TRUE, ylim = c(0, 50),title="Screeplot del ACM")
+```
+
+El criterio $\lambda > 1/p$ se cumple hasta aproximadamente la dimensión 18, lo que sugiere un número  elevado de dimensiones relevantes. Este resultado es habitual en ACM ya que tiende a sobreestimar el número de dimensiones necesarias, por ello nos basamos también en el Screeplot. 
+
+En el gráfico observamos que la varianza explicada disminuye progresivamente sin presentar un codo claramente definido. A pesar de ello, utilizaremos las dos primeras dimensiones ya que concentran la mayor proporción de varianza explicada dentro del conjunto de dimensiones y permiten hacer una representación interpretable de los datos.
+
+### Comprobación de individuos y carcaterísticas 
+
+El Biplot permite representar a los individuos y a las categorías de las variables en las dos primeras dimensiones. 
+
+```{r,echo=FALSE, warning=FALSE, message=FALSE}
+#fviz_mca_biplot(res.mca,repel = TRUE, gtheme = theme_minimal())
+```
+
+
+
+En este caso, el gráfico presenta una alta densidad de puntos, lo que nos dificulta hacer una lectura detallada a nivel individual. Aún así, podemos observar que la mayoría de los individuos se concentran alrededor del origen, por tanto, presentan perfiles medios sin características diferenciales. 
+
+La primera dimensión parece discriminar entre perfiles asociados a la respuesta de la campaña, situando en un extremo categorías basadas en la aceptación y el éxito y en otro aquellas relacionadas con la no respuesta. Por otra parte, la segunda dimensión refleja diferencias relacionadas con el perfil sociodemográfico, separando por profesiones y niveles educativos. 
+
+En conjunto, el gráfico nos sugiere que la respuesta a la campaña está asociada a características del cliente, aunque debido a la baja varianza explicada por las dos primeras dimensiones nos sugiere que las interpretaciones deben hacerse con cuidado. 
+
+
+### Variables en ACM 
+
+En este apartado analizamos las variables categóricas y sus categorías en relación con las dimensiones principales del ACM. En este caso utilizamos la pseudocorrelación, que mide el grado de asociación entre cada variables y las dimensiones. 
+
+```{r,echo=FALSE}
+var <- get_mca_var(res.mca)
+
+fviz_mca_var(res.mca, choice = "mca.cor", repel = TRUE, ggtheme = theme_minimal())
+```
+
+Este gráfico muestra la pseudocorrelación entre variables categóricas y las dos primeras dimensiones. Observamos que variables como job, education, month y contact son las que más contribuyen a la definición de la dimensión 1, ya que están situadas en la esquina derecha indicando mayor capacidad explicativa. Por el contrario, las variables como loan, default, housing o marital aparecen muy cercanas al origen, lo que nos indica su poca relevancia. La segunda dimensión prácticamente no está explicada por ninguna variable fuerte, por tanto tiene una capacidad explicativa limitada. 
+
+#### Coordenadas de las categorías
+
+```{r,echo=FALSE}
+# Coordenadas de las categorias
+fviz_mca_var(res.mca, repel = TRUE, ggtheme = theme_minimal())
+```
+Este gráfico nos muestra claramente que la primera dimensión separa perfiles asociados a la respuesta de la campaña. A la derecha se sitúan categorías como y_yes, success, student o university.degree, mientras que a la izquierda aparecen y_no, blue-collar y niveles educativos inferiores, lo que sugiere una diferenciación entre clientes con mayor probabilidad de aceptación frente a aquellos con menor respuesta. 
+
+Por otro lado, la segunda dimensión recoge diferencias más específicas entre perfiles. Destacamos en la parte superior categorías como retired, illiterate o housemaid, las cuales corresponden a grupos más particulares, mientras que en la parte inferior se concentran perfiles más comunes. 
+
+#### Calidad de la representación 
+
+La calidad de representación indica qué categorías están mejor representadas en el plano principal. Las categorías con valores altos de $cos^2$ son las más fiables para interpretar las dimensiones.
+
+```{r,echo=FALSE}
+# Calidad de la representación 
+fviz_cos2(res.mca, choice = "var", axes = 1:2)
+```
+Observamos como solo un número reducido de categorías están bien representadas en las dos primeras dimensiones, destacando blue-collar, telephone, cellular, y algunos niveles educativos, que presentan valores de $cos^2$ más elevados. La mayoría de categorías tienen valores bajos, lo que indica que su interpretación en las dimensiones 1 y 2 debe interpretarse con cuidado. 
+
+Este resultado nos confirma que las dos primeras dimensiones recogen solo una parte limitada de la estructura de los datos, por lo que parte de la información relevante se encuentra en otras dimensiones. 
+
+#### Contribuciones 
+
+Las contribuciones permiten identificar qué categorías son las más importantes en cada dimensión. Aquellas que superan la contribución media son las que definen principalmente el eje y, por tanto, deben considerarse en su interpretación.
+
+```{r, echo=FALSE,fig.show='hold', fig.width=5, fig.height=4, out.width='48%', fig.align='center'}
+# Contribuciones 
+fviz_contrib(res.mca, choice = "var", axes = 1, top = 15)
+fviz_contrib(res.mca, choice = "var", axes = 2, top = 15)
+fviz_contrib(res.mca, choice = "var", axes = 1:2, top = 15)
+```
+Las contribuciones muestran que la primera dimensión está principalmente definida por categorías como blue-collar, el tipo de contacto, niveles educativos y la variable respuesta, lo que nos facilita su interpretación como un eje asociado al perfil del cliente y su relación con la campaña. En la segunda dimensión destacan variables como basic.4y, retired o admin, que reflejan características sociodemográficas. Considerando ambas dimensiones, las categorías más influyentes son blue-collar, niveles educativos bajos, el tipo de contacto y la variable respuesta de la campaña. 
+
+### Individuos 
+
+En este apartado se analizan los individuos en el espacio definido por las dimensiones principales del ACM. El objetivo es evaluar su distribución, identificar aquellos con mayor influencia en la construcción de las dimensiones y valorar la calidad de su representación. 
+
+```{r, echo=FALSE}
+# Gráfico de individuos según contribución
+fviz_mca_ind(res.mca, col.ind = "contrib", 
+gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), repel = FALSE, 
+ggtheme = theme_minimal())
+```
+Este gráfico muestra la distribución de los individuos en función de su contribución a las dos primeras dimensiones del ACM. Observamos una alta concentración de puntos en la zona central, lo que indica que la mayoría de individuos tienen una contribución baja. En cambio, los situados en los extremos presentan mayores niveles de contribución , siendo los más influyentes. 
+
+```{r,echo=FALSE}
+# Calidad de representación de los individuos
+fviz_mca_ind(res.mca, col.ind = "cos2", 
+gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),repel = FALSE, 
+ggtheme = theme_minimal())
+```
+Este gráfico muestra la calidad de representación de los individuos en las dos dimensiones principales. La mayoría de los individuos presentan un $cos^2$ bajo, lo que indica que están pocos representados. Por el contrario los individuos en los extremos presentan valores más elevados, siendo los mejor representados y, por tanto, los más fiables para la interpretación. 
+
+```{r, echo=FALSE}
+# Individuos más influyentes
+fviz_contrib(res.mca, choice = "ind", axes = 1:2, top = 20)
+```
+Por último, observamos que un número reducido de observaciones presenta contribuciones superiores a la media, siendo las que más influyen en la definición del espacio. Sin embargo, estas representan una proporción muy pequeña del total, lo que indica que la estructura global del análisis no está determinada por casos individuales concretos, sino por el conjunto de los datos.
+
+En el análisis de variables del ACM se observa que solo algunas categorías contribuyen de forma relevante a la definición de las dimensiones, especialmente en la primera, mientras que la mayoría presentan una baja calidad de representación. En conjunto, las dos primeras dimensiones capturan parcialmente la estructura de los datos, por lo que los resultados deben interpretarse con cuidado.
+
+### Descripción de dimensiones 
+
+```{r, include=FALSE}
+# Descripción de dimensiones
+res.desc <- dimdesc(res.mca, axes = c(1,2))
+res.desc[[1]]
+res.desc[[2]]
+```
+La descripción de las dimensiones muestra que la Dimensión 1 está principalmente asociada a variables como month, job, education y contact, lo que indica que este eje recoge diferencias relacionadas con el perfil del cliente y el contexto de la campaña, tal y como hemos mencionado anteriormente. 
+
+Por su parte, la Dimensión 2 está más influenciada por variables como job y education, destacando categorías específicas como retired, blue-collar o niveles educativos bajos, lo que sugiere que este eje captura diferencias más estructurales de tipo sociodemográfico.  En conjunto, la Dimensión 1 resulta más interpretable, mientras que la Dimensión 2 actúa como complemento.
+
+## Conclusiones 
+
+En conjunto, el ACM nos permite identificar asociaciones entre categorías y distintos perfiles de clientes, mostrando que variables como el nivel educativo o el tipo de contacto están relacionadas con la respuesta a la campaña. Aun así, las primeras dimensiones explican poca varianza, lo que nos indica que la estructura de los datos es bastante compleja y que la información está repartida entre muchas dimensiones.
+
+### Encontrar las coincidencias y discrepancias con ACP
+
+El ACM confirma en gran medida los resultados obtenidos en el ACP, ya que en ambos casos se observa que las variables relacionadas con la actividad económica y el contexto de la campaña son las que más influyen en la estructura de los datos. En ambos análisis observamos diferencias claras entre tipos de clientes, sobretodo relacionadas con su perfil y cómo se comportan con la campaña. La principal diferencia es que el ACP trabaja con variables numéricas y detecta relaciones más claras y directas, mientras que ACM trabaja con categorías y permite captar sus asociaciones. 
+
+En particular, el ACM muestra una clara diferenciación entre clientes que responden positivamente a la campaña y aquellos que no, asociada a características como nivel educativo, ocupación o el tipo de contrato. Como discrepancia, el ACM presenta una menor capacidad explicativa en las primeras dimensiones, lo que hace que la estructura sea más dispersa y difícil de interpretar en comparación con el ACP.
+
+\newpage
+
+# FAMD
+
+Aplicaremos el Factor Analysis of Mixed Data (FAMD) con el fin de analizar conjuntamente variables sociodemográficas, económicas y de comportamiento de los clientes, considerando la variable respuesta como suplementaria para facilitar la interpretación de los patrones observados.
+
+```{r, echo=FALSE}
+# Como el tener nombres de filas o columnas repetidos dificulta e impide el FAMD, modificaremos ligeramente nuestra muestra para adelantarnos a posibles fallos
+muestra_tmp <- muestra
+
+muestra_tmp[] <- lapply(names(muestra_tmp), function(n) {
+  x <- muestra_tmp[[n]]
+  if (is.factor(x)) {
+    levels(x) <- paste(n, levels(x), sep = "_")
+  }
+  x
+})
+
+muestra_tmp <- as.data.frame(muestra_tmp)
+# ya podemos ejecutar nuestro famd
+famd <- FAMD(muestra_tmp, graph=FALSE)
+```
+
+## Resultados principales del análisis
+
+Una vez realizado el análisis factorial de datos mixtos, analizaremos los resultados:
+
+```{r, echo=FALSE}
+library(factoextra)
+get_eigenvalue(famd)
+```
+Los valores propios muestran una disminución progresiva sin cambios abruptos, lo que indica que la varianza se distribuye de manera relativamente homogénea entre las distintas dimensiones. Ningún componente destaca de forma clara como dominante. Además, el porcentaje de varianza explicada por cada dimensión es bajo (en torno al 1.5%–1.9%), y la varianza acumulada de las cinco primeras dimensiones apenas alcanza el 8.43%. Esto sugiere que la estructura de los datos es compleja y que se requieren múltiples dimensiones para capturar una proporción significativa de la variabilidad total, lo cual es habitual en análisis FAMD con un número elevado de variables mixtas.
+
+```{r, echo=FALSE}
+fviz_eig(famd)
+```
+La estructura principal está en las primeras pocas dimensiones, nos podríamos quedar con las 2/3 primeras dimensiones, ya que a partir de ahí la caída es realmente pequeña.
+
+## Interpretar las categorias
+
+```{r, echo=FALSE}
+# Comenzamos extrayendo las categorías
+quali.var <- get_famd_var(famd,"quali.var")
+
+# Contribuciones: indica cuánto aporta cada variable a la formación de un eje
+
+fviz_contrib(famd, "quali.var", axes=1)
+fviz_contrib(famd, "quali.var", axes=2)
+
+```
+El gráfico de contribuciones muestra que la Dimensión 1 está explicada principalmente por unas pocas variables cualitativas con alta contribución (las primeras barras, por encima de la linea roja). La mayoría de las variables restantes tienen una contribución baja, por lo que su influencia en esta dimensión es limitada. La dimensión dos también está explicada por un número reducido de variables cualitativas de alta contribución, pero con una caída más rápida , indicando que muy pocas variables dominan esta dimensión.
+
+```{r, echo=FALSE}
+# Calidad: mide qué tan bien está representada una variable en ese eje
+fviz_cos2(famd, "quali.var", axes=1)
+fviz_cos2(famd, "quali.var", axes=2)
+```
+Estos gráficos muestran la calidad de representación de las variables cualitativas en las Dimensiones 1 y 2. En ambos casos, solo unas pocas variables tienen valores altos, lo que significa que están bien representadas en esas dimensiones. La gran mayoría representan valores bajos, indicando que no se explican bien por estos ejes y su interpretación en ellos es limitada.
+
+## Interpretar las relaciones
+
+```{r, echo=FALSE}
+# filtrado por las categorías más importantes
+fviz_famd_var(famd, "quali.var", select.var=list(contrib=20))
+```
+
+El gráfico muestra que la Dimensión 1 separa principalmente categorías asociadas a resultados positivos ( como poutcome_success o y_yes), que aparecen a la derecha, frente a otras menos favorables situadas a la izquierda. La Dimensión 2 introduce diferencias más secundarias, como el tipo de contacto (contact_telephone). La mayoría de categorías se concentran cerca del centro, lo que indica que tienen poca influencia en la estructura principal.
+
+\newpage
+
+# Clustering jerárquico
+
+## Describir la matriz y mostrar el árbol
+
+Para el clustering jerárquico utilizamos como matriz de entrada las coordenadas de los individuos en las tres primeras dimensiones del FAMD. De esta forma, no trabajamos con las variables originales, sino con un espacio reducido que resume la información conjunta de variables cuantitativas y cualitativas.
+
+```{r,echo=FALSE}
+ind_famd <- famd$ind$coord
+X_clust <- ind_famd[, 1:3]
+head(X_clust)
+```
+Como las coordenadas del FAMD ya son variables numéricas, podemos calcular una distancia euclídea entre individuos (no necesitamos aplicar Gower). Esta distancia mide cómo de parecidos o diferentes son los clientes dentro del espacio factorial obtenido. Dos individuos cercanos en este espacio tendrán perfiles similares según la información combinada de las variables cuantitativas y cualitativas.
+
+```{r,echo=FALSE}
+dist_mat <- dist(X_clust, method = "euclidean")
+```
+
+Una vez calculada la matriz de distancias, aplicamos distintos métodos de agregación jerárquica para comparar cómo se construyen los grupos. Probamos varios criterios de enlace: single, complete, average y Ward.D2.
+
+El objetivo de comparar varios métodos es evitar escoger directamente un único criterio sin justificarlo. 
+
+```{r,echo=FALSE}
+hc_single <- hclust(dist_mat, method = "single")
+hc_complete <- hclust(dist_mat, method = "complete")
+hc_average <- hclust(dist_mat, method = "average")
+hc_ward <- hclust(dist_mat, method = "ward.D2")
+```
+
+Para seleccionar el método de agregación más adecuado, comparamos los distintos dendrogramas mediante la correlación cofenética. Esta medida evalúa cómo de bien el dendrograma representa las distancias originales entre los individuos.
+
+```{r,echo=FALSE}
+tabla_cor <- data.frame(
+  Metodo = c("Single", "Complete", "Average", "Ward.D2"),
+  Correlacion = c(
+    cor(dist_mat, cophenetic(hc_single)),
+    cor(dist_mat, cophenetic(hc_complete)),
+    cor(dist_mat, cophenetic(hc_average)),
+    cor(dist_mat, cophenetic(hc_ward))
+  )
+)
+kable(tabla_cor,
+      digits = 4,
+      caption = "Correlación cofenética por método de agregación",
+      booktabs = TRUE) %>%
+  kable_styling(latex_options = c("hold_position"))
+```
+
+A partir de la correlación cofenética observamos que el método average presenta el valor más elevado (0.8836), lo que indica que es el que mejor preserva la estructura de distancias original entre los individuos.
+
+Aunque el método de Ward suele ser una opción habitual en clustering jerárquico, en este caso presenta un ajuste claramente inferior. Por este motivo, seleccionamos el método average como criterio de agregación final.
+
+```{r,echo=FALSE}
+plot(hc_average)
+```
+
+El dendrograma obtenido con el método average muestra una estructura bastante compleja, con muchas observaciones concentradas en niveles bajos de altura, lo que hace que no sea tan fácil identificar cortes claros a simple vista. Aun así, si nos fijamos en la parte superior del gráfico, sí se pueden distinguir aproximadamente tres grandes bloques, lo que sugiere que existe una estructura global de tres clústeres.
+
+Por este motivo, optamos por seleccionar k = 3, ya que permite recoger la estructura principal de los datos sin dividirlos en demasiados grupos pequeños y difíciles de interpretar. Además, esta falta de separación tan marcada es coherente con los resultados del FAMD, donde vimos que la varianza se distribuye de forma bastante homogénea entre las dimensiones, indicando que estamos ante unos datos con una estructura más compleja de lo habitual.
+
+```{r,echo=FALSE}
+cluster_famd <- cutree(hc_average, k = 3)
+dades_profile <- muestra
+dades_profile$cluster_famd <- as.factor(cluster_famd)
+```
+
+Para visualizar los clústeres obtenidos mediante el método jerárquico, utilizamos una representación en el espacio de las componentes del FAMD, empleando funciones del paquete factoextra, que permiten representar los individuos coloreados según su pertenencia a cada grupo.
+
+```{r,echo=FALSE}
+library(factoextra)
+fviz_cluster(
+  list(data = X_clust, cluster = cluster_famd),
+  geom = "point",
+  ellipse.type = "convex",
+  palette = "jco",
+  ggtheme = theme_minimal(),
+  main = "Clustering jerárquico sobre FAMD"
+)
+```
+
+El gráfico muestra los clusters proyectados en las dos primeras dimensiones del FAMD. Se ve bastante claro que el cluster 2 está bien separado del resto, así que probablemente representa un grupo de clientes bastante diferente.
+
+En cambio, los clusters 1 y 3 están bastante mezclados entre sí, sobre todo en la parte izquierda, lo que indica que no son tan distintos o que cuesta separarlos bien en estas dimensiones.
+
+También se observa que el cluster 1 es el más grande y disperso, mientras que el cluster 2 es más compacto.
+
+En general, la estructura está bastante marcada por ese cluster 2 que se separa claramente, mientras que los otros dos son más parecidos entre sí. Aun así, hay que tener en cuenta que solo estamos viendo dos dimensiones, así que parte de la separación real entre grupos puede estar en dimensiones adicionales del FAMD. 
+
+## Profiling de los clusters
+
+Se realiza una primera fase de filtrado con el objetivo de identificar aquellas variables que presentan diferencias significativas entre los clústeres.
+
+Para las variables numéricas se utilizan contrastes ANOVA o Kruskal-Wallis según el cumplimiento de normalidad, mientras que para las variables categóricas se aplica el test chi-cuadrado.
+
+A partir de estos resultados, se seleccionan únicamente aquellas variables con p-valor inferior a 0.05, ya que son las que realmente permiten diferenciar los grupos.
+
+```{r,echo=FALSE}
+dades <- muestra
+dades$cluster <- as.factor(cluster_famd)
+tipo <- sapply(dades, class)
+varNum <- names(tipo)[which(tipo %in% c("integer", "numeric"))]
+varCat <- names(tipo)[which(tipo %in% c("character", "factor"))]
+varNum <- varNum[varNum != "cluster"]
+varCat <- varCat[varCat != "cluster"]
+variablesPasanFase1 <- c()
+for (cV in c(varNum, varCat)) {
+  # NUMÉRICAS
+  if (cV %in% varNum) {
+    testSH <- shapiro.test(dades[, cV])
+    if (testSH$p.value > 0.05) {
+      test <- aov(dades[, cV] ~ dades$cluster)
+      p_val <- summary(test)[[1]][["Pr(>F)"]][1]
+    } else {
+      test <- kruskal.test(dades[, cV] ~ dades$cluster)
+      p_val <- test$p.value
+    }
+    if (p_val <= 0.05) {
+      variablesPasanFase1 <- c(variablesPasanFase1, cV)
+    }
+  }
+  # CATEGÓRICAS
+  if (cV %in% varCat) {
+    test <- chisq.test(dades[, cV], dades$cluster)
+    if (test$p.value <= 0.05) {
+      variablesPasanFase1 <- c(variablesPasanFase1, cV)
+    }
+  }
+}
+variablesPasanFase1
+```
+
+En la primera fase del profiling vemos que prácticamente todas las variables originales presentan diferencias significativas entre los clústeres. Esto tiene bastante sentido, ya que los grupos se han construido a partir de las dimensiones del FAMD, que resumen la información conjunta de variables tanto numéricas como categóricas.
+
+Aun así, que una variable salga significativa no quiere decir que sea clave para interpretar los clústeres. Por eso, en la siguiente fase nos centraremos solo en aquellas variables que realmente destacan más entre grupos, apoyándonos en los resultados de catdes y cluster.carac.
+
+A continuación, se analizan las características de cada clúster a partir de las variables seleccionadas.
+
+Para las variables numéricas se observan las medias por grupo, mientras que para las variables categóricas se identifican las categorías más frecuentes en cada clúster.
+
+Esto permite construir un perfil descriptivo de cada grupo y entender qué tipo de clientes lo componen.
+
+```{r,echo=FALSE,include=FALSE}
+library(psych)
+datosNum <- dades[, variablesPasanFase1[variablesPasanFase1 %in% varNum]]
+if (ncol(datosNum) > 0) {
+  psych::describeBy(datosNum, dades$cluster)
+}
+```
+
+A partir de las medias por clúster, vemos que el clúster 1 es claramente el grupo mayoritario, con 4733 clientes. Presenta valores muy cercanos al perfil general: edad media alrededor de 40 años, duración media de llamada de 254 segundos y prácticamente sin contactos previos.
+
+El clúster 2 es mucho más pequeño, con 193 clientes, pero está bastante diferenciado. Destaca por tener una mayor duración media de llamada, más contactos previos (previous = 1.75) y un valor de pdays mucho más bajo, lo que indica que son clientes que sí habían sido contactados anteriormente. Además, presenta valores económicos más bajos, como euribor3m y nr.employed.
+
+El clúster 3 es el más pequeño, con 74 clientes. Se caracteriza por no tener contactos previos recientes (pdays = 999, previous casi 0), una duración de llamada menor y valores económicos más altos, especialmente en euribor3m y nr.employed.
+
+En conjunto, el clúster 2 parece ser el grupo más diferenciado desde el punto de vista del historial de campaña, mientras que los clústeres 1 y 3 son más parecidos entre sí, aunque el tercero aparece asociado a un contexto económico más favorable.
+
+```{r,echo=FALSE,include=FALSE}
+variablesCAT <- variablesPasanFase1[variablesPasanFase1 %in% varCat]
+for (vC in variablesCAT) {
+  tabla <- data.frame(table(dades[, vC], dades$cluster))
+  moda <- tabla %>%
+    group_by(Var2) %>%
+    filter(Freq == max(Freq)) %>%
+    select(Var1, Var2)
+  print(moda)
+}
+```
+
+A partir de las variables categóricas se ve que los tres clústeres comparten bastantes cosas, así que no están totalmente separados. En general, la mayoría de clientes en todos los grupos son casados, no tienen impagos, han sido contactados por móvil y la campaña se concentra sobre todo en mayo. Es decir, hay un perfil bastante común que se repite en todos.
+
+Aun así, sí hay alguna diferencia interesante. El clúster 2 es el único donde el resultado de campañas anteriores aparece como success y además es el único donde la variable objetivo es yes. Esto encaja bastante con lo que ya habíamos visto, ya que parece ser el grupo de clientes más propensos a aceptar la oferta.
+
+En cambio, los clústeres 1 y 3 tienen poutcome = nonexistent y y = no, así que agrupan clientes con menor respuesta a la campaña. También hay pequeñas diferencias en cosas como el tipo de trabajo o el nivel de estudios, pero en general aquí las diferencias entre grupos son más suaves que en las variables numéricas.
+
+```{r,echo=FALSE}
+res <- FactoMineR::catdes(dades, num.var = which(colnames(dades) == "cluster"))
+plot(res, show = "quanti")
+plot(res, show = "quali")
+```
+
+En general, los clústeres 1 y 2 son los que realmente se diferencian, mientras que el clúster 3 queda bastante más neutro y no tiene un perfil tan claro.
+
+El clúster 1 parece estar más ligado a un contexto económico más fuerte (valores altos en emp.var.rate, euribor3m, etc.), pero con menos interacción en campañas (duration y previous más bajos). En cambio, el clúster 2 es justo al revés: clientes más activos en campañas y con más interacción, pero en un contexto económico más bajo.
+
+El clúster 3, en cambio, no destaca especialmente en nada, así que es un grupo más “mezcla” o menos definido.
+
+Además, en las categóricas se ve que el clúster 2 está más asociado a respuestas positivas (y = yes, poutcome = success), mientras que los otros dos tienden más a resultados negativos o sin respuesta.
+
+```{r,echo=FALSE, include=FALSE}
+dadesF <- FactoClass::Fac.Num(dades)
+
+# numéricas
+dades.act <- cbind(dadesF$numeric, dadesF$integer)
+class <- dadesF$factor$cluster
+cluster.carac(dades.act, class, tipo.v = "co", v.lim = 1.96)
+
+# categóricas
+dades.act <- dadesF$factor %>% select(-cluster)
+cluster.carac(dades.act, class, tipo.v = "ca", v.lim = 1.96)
+```
+
+Los resultados del v-test confirman bastante bien lo que ya habíamos visto antes, pero aquí queda más claro qué variables son realmente importantes en cada clúster.
+
+El clúster 1 está claramente asociado a valores altos de variables económicas (euribor3m, emp.var.rate, nr.employed) y a no haber tenido interacción previa (pdays alto y previous muy bajo). Además, en las categóricas se asocia sobre todo a y = no y poutcome = nonexistent, así que son clientes poco activos y con baja probabilidad de respuesta.
+
+El clúster 2 es el más distinto. Destaca muchísimo en previous y duration, lo que indica clientes con bastante interacción en campañas. Además, tiene valores económicos más bajos y, en categóricas, aparece fuertemente ligado a poutcome = success y y = yes. Es decir, es el grupo más propenso a aceptar la oferta.
+
+El clúster 3 es más pequeño y menos claro. Tiene valores algo más altos en variables económicas, pero sin diferencias tan fuertes. En categóricas destaca por valores unknown en housing y loan, lo que sugiere que es un grupo más irregular o con información menos definida.
+
+En conjunto, el v-test permite reforzar las conclusiones obtenidas anteriormente, confirmando qué variables son realmente discriminantes en la formación de los clústeres y aportando una caracterización más sólida de cada grupo.
+
+Como conclusión final, etiquetaremos los clusters: 
+
+- *Clúster 1:* clientes estándar, poco activos en campañas y asociados a un contexto económico más favorable
+
+- *Clúster 2:* clientes activos, con más interacción y mayor probabilidad de respuesta positiva
+
+- *Clúster 3:* clientes poco definidos, con menor interacción y comportamiento más neutro
+
+## Compararación de resultados
+
+Comparando con el profiling anterior, vemos que la idea general se mantiene bastante. En los dos casos aparece un grupo más interesante para el banco: clientes con más interacción previa, llamadas más largas y más tendencia a aceptar la oferta. Antes este perfil aparecía como el clúster 3 del PAM, y ahora aparece como el clúster 2 del clustering sobre FAMD.
+
+La diferencia principal es que ahora los grupos se han creado usando las componentes del FAMD, así que el análisis combina mejor la información numérica y categórica. Por eso, la interpretación ya no depende tanto solo de las variables numéricas, sino que también recoge mejor el efecto de variables como poutcome, y, contact o month.
+
+También cambia un poco la lectura de los otros clústeres. En el profiling anterior, los grupos 1 y 2 se separaban sobre todo por la edad. Ahora, en cambio, la diferencia parece ir más por el contexto económico y el historial de campaña. El clúster 1 queda como el grupo mayoritario, con poca interacción previa y baja respuesta, mientras que el clúster 3 es más pequeño y menos definido.
+
+En resumen, los dos análisis llegan a una conclusión parecida: hay un segmento de clientes con más probabilidad de responder positivamente. Pero el análisis con FAMD queda más completo porque mezcla mejor todos los tipos de variables y, además, el v-test ayuda a ver con más claridad qué caracteriza a cada clúster.
+
+\newpage
+
+# Análisis discriminante 
+
+## Resultados del análisis 
+
+Para realizar el análisis discriminante sobre datos mixtos, utilizaremos las coordenadas factoriales del FAMD, ya que resumen toda la información relevante.
+
+```{r, echo=FALSE}
+library(MASS)
+
+#datos: coordenadas del FAMD y la variable de clase 
+datos_lda <- as.data.frame(X_clust) 
+datos_lda$clase <- as.factor(cluster_famd)
+
+#Análisis discriminante lineal (LDA)
+modelo_lda <- lda(clase ~ ., data = datos_lda)
+modelo_lda
+```
+Los resultados muestran una capacidad de discriminación muy alta:
+
+- *Probabilidades a priori:* El modelo reconoce la estructura desequilibrada de la muestra, donde el Clúster 1 es el mayoritario (94.6%), mientras que los Clústeres 2 (3.8%) y 3 (1.4%) e presentan como clases de baja frecuencia relativa.
+
+- *Proporción de traza (Eficacia):* La primera función discriminante (LD1) explica el 92.58% de la varianza entre grupos. Esto significa que casi toda la diferenciación de los clientes se puede explicar con un solo eje. La segunda función (LD2) solo aporta un 7.42% adicional.
+
+- *Interpretación de los coeficientes (Funciones discriminantes):*
+$$LD1 = -0.51 \cdot \text{Dim.1} + 1.02 \cdot \text{Dim.2} - 0.27 \cdot \text{Dim.3}$$
+$$LD2 = -0.01 \cdot \text{Dim.1} + 0.16 \cdot \text{Dim.2} + 0.75 \cdot \text{Dim.3}$$
+- LD1 (El "Eje de actividad y éxito"): Está dominado por la Dim.2 del FAMD (coeficiente 1.02). Como vimos en el perfilado, esta dimensión separa a los clientes con historial de éxito previo. Un valor alto en LD1 nos indica un cliente con alta probabilidad de suscripción.
+- LD2 (El "eje de contexto económico"): Está dominado casi totalmente por la Dim.3 (coeficiente 0.75). Este eje ayuda a separar al Clúster 3, que tenía valores económicos (Euribor/Empleo) más específicos.
+
+- *Medias de los grupos (Centroides):*
+- El Clúster 2 se sitúa en el extremo negativo de la Dim.1 (-5.77) y positivo de la Dim.2 (5.14). Es el grupo más "extremo" y, por tanto, el más fácil de identificar.
+- El Clúster 3 destaca radicalmente en la Dim.3 (5.20), confirmando que su diferencia es de naturaleza económica/temporal.
+
+```{r, echo=FALSE}
+library(ggpubr)
+lda_pred <- predict(modelo_lda)
+dataset_plot <- data.frame(LD1 = lda_pred$x[,1], LD2 = lda_pred$x[,2], Clase = datos_lda$clase)
+
+ggplot(dataset_plot, aes(x = LD1, y = LD2, color = Clase)) +
+  geom_point(alpha = 0.6) +
+  stat_ellipse() +
+  labs(title = "Separación de clústeres en el espacio discriminante",
+       x = "Función discriminante 1 (92.58%)",
+       y = "Función discriminante 2 (7.42%)") +
+  theme_minimal() +
+  scale_color_brewer(palette = "Set1")
+```
+
+El gráfico de dispersión en el espacio discriminante muestra una separación nítida de los tres grupos. La primera función discriminante (LD1) logra segregar casi por completo al Clúster 2, situándolo en valores positivos altos, lo que demuestra la existencia de un perfil de cliente claramente diferenciable. Por su parte, la segunda función (LD2), aunque con menor peso relativo, resulta esencial para proyectar el Clúster 3 fuera de la nube de puntos del Clúster 1, confirmando la validez de la estructura de tres grupos obtenida en la fase de clustering.
+
+## Matriz de confusión e interpretación 
+
+Para validar el modelo, cruzamos las clasificaciones reales con las predicciones del LDA:
+
+```{r, echo=FALSE}
+predicciones <- predict(modelo_lda)$class
+matriz_confusion <- table(Original = datos_lda$clase, Predicho = predicciones)
+
+# precisión (Accuracy)
+accuracy <- sum(diag(matriz_confusion)) / sum(matriz_confusion)
+accuracy 
+
+library(kableExtra)
+kable(matriz_confusion, 
+      caption = "Matriz de confusión del análisis discriminante lineal",
+      booktabs = TRUE, 
+      align = "c") %>%
+  kable_styling(latex_options = c("striped", "hold_position"))
+```
+
+La matriz de confusión ratifica la altísima robustez del modelo discriminante, alcanzando una precisión global del 99.64%.
+
+Destaca la excelente clasificación del Clúster 2 (el segmento con mayor tasa de éxito en la campaña), donde prácticamente no existe error de omisión. Esto demuestra que las variables de interacción previa (previous, poutcome) combinadas con la duración de la llamada, crean una firma estadística inconfundible para este grupo.
+
+La mínima confusión observada se da entre los Clústeres 1 y 3 (10 casos), lo cual es coherente con nuestro análisis previo, ya que ambos grupos comparten la característica de no haber sido contactados con éxito anteriormente, diferenciándose principalmente por indicadores macroeconómicos que, en algunos casos limítrofes, pueden solaparse.
+
+\newpage
+
+# Discriminador o clasificador alternativo
+
+Para esta sección elegimos como clasificador alternativo el Random Forest. Este es un método de aprendizaje automático basado en la combinación de múltiples árboles de decisión. Entre las alternativas disponibles, el LDA ya implementado es el método más interpretable pero impone supuestos de normalidad estrictos que los datos bancarios difícilmente cumplen. Un árbol de decisión simple sería muy fácil de explicar visualmente pero tiende a sobreajustarse. La regresión logística es otro clasificador que podría plantearse como alternativa en este contexto. Sin embargo, en su formulación estándar presenta una limitación importante: está diseñada para problemas de clasificación binaria, es decir, cuando la variable respuesta tiene únicamente dos categorías. En nuestro caso, la variable clase tiene tres categorías (clústeres 1, 2 y 3), por lo que habría que recurrir a la regresión logística multinomial, que es una extensión del modelo original para más de dos clases.
+
+Random Forest es un método no paramétrico y que no requiere ningún supuesto distribucional. Es robusto ante desequilibrio de clases (el Clúster 1 tiene el 94.6% de las observaciones) y funciona bien con datos mixtos. Además, proporciona una medida de importancia de variables que permite comparar directamente con los coeficientes discriminantes del LDA. El principal inconveniente de este método es la difícil justificación de los resultados obtenidos ya que sería necesario justificar las diversas elecciones de cada árbol.
+
+
+```{r,echo=FALSE}
+library(randomForest)
+library(caret)
+
+# Usamos los mismos datos que el LDA
+set.seed(123)
+datos_rf <- datos_lda  # ya tiene las coordenadas FAMD + clase
+
+# División train/test (70/30)
+idx <- createDataPartition(datos_rf$clase, p = 0.7, list = FALSE)
+train_rf <- datos_rf[idx, ]
+test_rf  <- datos_rf[-idx, ]
+
+# Entrenamiento del modelo
+modelo_rf <- randomForest(clase ~ ., data = train_rf, ntree = 500, importance = TRUE)
+```
+
+## Matriz de confusión 
+```{r,echo=FALSE}
+# Predicciones sobre test
+pred_rf <- predict(modelo_rf, newdata = test_rf)
+
+# Matriz de confusión
+matriz_rf <- table(Original = test_rf$clase, Predicho = pred_rf)
+accuracy_rf <- sum(diag(matriz_rf)) / sum(matriz_rf)
+
+kable(matriz_rf,
+      caption = "Matriz de confusión del Random Forest",
+      booktabs = TRUE,
+      align = "c") %>%
+  kable_styling(latex_options = c("striped", "hold_position"))
+```
+La matriz de confusión del Random Forest muestra los resultados obtenidos sobre el conjunto de test, es decir, sobre datos que el modelo no había visto durante el entrenamiento. Esto es importante porque ofrece una estimación más realista del rendimiento del modelo que la que obtendríamos evaluándolo sobre los mismos datos con los que fue entrenado.
+
+Los resultados muestran una precisión global del 99.73%, lo cual confirma que el modelo clasifica correctamente casi la totalidad de los clientes. Analizando cada fila de la tabla:  
+- El clúster 1, siendo el grupo mayoritario con 1419 observaciones en el conjunto de test, solo presenta 1 error de clasificación, lo que supone una tasa de error prácticamente nula.  
+- El clúster 2, que representa el grupo de clientes más activos y con mayor probabilidad de respuesta positiva, se clasifica perfectamente, sin ningún error. Esto confirma que este grupo tiene una firma estadística muy diferenciada del resto.  
+- El clúster 3, el más pequeño y menos definido, presenta 3 errores de clasificación, todos ellos confundidos con el clúster 1. Este resultado es coherente con lo observado durante el profiling, donde estos dos grupos mostraban mayor similitud entre sí.
+
+
+
+## Importancia de las variables
+```{r,echo=FALSE}
+# Importancia de variables
+varImpPlot(modelo_rf, main = "Importancia de variables - Random Forest")
+```
+Este gráfico muestra qué variables han sido más útiles para que el modelo tome decisiones correctas. Se presentan dos métricas:  
+- MeanDecreaseAccuracy: mide cuánto empeora la precisión del modelo si se elimina esa variable. Cuanto mayor sea el valor, más importante es la variable.  
+- MeanDecreaseGini: mide cuánto contribuye cada variable a reducir la impureza en los nodos de los árboles. Un valor alto indica que esa variable permite separar bien las clases.
+
+En el gráfico se observa que Dim.3 es la variable más importante según el criterio de precisión, seguida de Dim.2 y finalmente Dim.1. Sin embargo, según el criterio Gini, Dim.2 pasa a ser la más relevante, seguida de Dim.1 y Dim.3.
+
+A partir de los resultados en el FAMD, Dim.2 estaba principalmente relacionada con el historial de campañas previas y la respuesta positiva del cliente, mientras que Dim.3 recogía diferencias de naturaleza más económica y temporal. El hecho de que ambas dimensiones sean las más importantes para el Random Forest confirma que son precisamente estas dos fuentes de variabilidad las que mejor permiten distinguir entre los tres perfiles de clientes identificados.
+
+Dim.1, que resumía la mayor parte de la variabilidad general de los datos, resulta sin embargo menos discriminante a la hora de clasificar, lo que sugiere que recoge un patrón común a todos los clientes más que diferencias entre grupos.
+
+
+
+## Comparación con el análisis discriminate y justificación de las diferencias
+
+El modelo Random Forest obtiene una precisión similar al LDA, confirmando que la estructura de los tres clústeres es sólida y no dependiente del método utilizado. La principal diferencia reside en los supuestos: el LDA asume normalidad multivariante e igualdad de covarianzas entre grupos, supuestos difíciles de garantizar en datos bancarios reales, mientras que el Random Forest no impone ninguna restricción distribucional. 
+
+Ambos modelos han obtenido una precisión muy elevada, por encima del 99%, lo que confirma que la estructura de los tres clústeres es sólida y reproducible independientemente del método utilizado. Sin embargo, existen diferencias importantes entre ellos que conviene analizar en detalle.
+
+El LDA alcanza una precisión del 99.64% evaluada por resubstitución, es decir, entrenando y prediciendo sobre los mismos datos. El Random Forest obtiene una precisión del 99.73% evaluada sobre un conjunto de test independiente que el modelo no había visto durante el entrenamiento. Aunque numéricamente el Random Forest parece ligeramente superior, la diferencia más relevante es metodológica: la estimación del Random Forest es más fiable porque se basa en datos nuevos, mientras que la del LDA puede estar ligeramente inflada por el hecho de evaluar sobre los mismos datos de entrenamiento.
+
+Analizando la clasificación de cada grupo por separado, ambos modelos coinciden en que el clúster 2 es el más fácil de identificar, con prácticamente cero errores en ambos casos. Esto confirma que este grupo, formado por clientes con historial previo de éxito en campañas y mayor interacción con el banco, posee un perfil estadístico muy diferenciado del resto.
+La mayor fuente de error en ambos modelos se concentra en la frontera entre los clústeres 1 y 3, que son los dos grupos más parecidos entre sí. El LDA comete 10 errores en esta frontera, mientras que el Random Forest comete únicamente 3. Esto sugiere que el Random Forest es capaz de capturar mejor las diferencias sutiles entre estos dos grupos, probablemente gracias a su capacidad para detectar relaciones no lineales que el LDA no es capaz de modelar.
+
+En relación a la interpretabilidad, el LDA ofrece una ventaja clara: sus funciones discriminantes tienen coeficientes explícitos que permiten entender exactamente qué dimensiones del FAMD contribuyen más a separar los grupos. En este caso, LD1 estaba dominada por Dim.2, relacionada con el historial de campañas previas, y LD2 por Dim.3, asociada al contexto económico. Esta interpretación directa es más difícil de obtener con el Random Forest, que ofrece medidas de importancia de variables pero no permite cuantificar el efecto de cada una de forma tan precisa.
+
+En resumen, ambos modelos llegan a las mismas conclusiones sustantivas: existe un perfil de cliente claramente diferenciable asociado al éxito previo en campañas, y la mayor dificultad de clasificación se da entre los clientes estándar y los menos definidos. Sin embargo, el Random Forest resulta más adecuado desde el punto de vista estadístico por su mayor robustez, su capacidad para capturar relaciones no lineales y su evaluación sobre datos independientes. El LDA, por su parte, sigue siendo útil como complemento por su mayor interpretabilidad y la claridad de sus funciones discriminantes.
+
+
+
+
+\newpage
+
+# Análsis comparativa
+
+## Disusión general
+
+En conjunto, todos los métodos muestran que los datos presentan una estructura compleja y heterogénea, donde las variables económicas, el historial de campañas previas y determinadas características sociodemográficas juegan un papel fundamental en la diferenciación de los clientes.
+
+El ACP permitió resumir la información numérica identificando principalmente dos grandes ejes: uno asociado al contexto económico y otro relacionado con el historial del cliente. Este análisis mostró relaciones lineales muy claras entre variables como euribor3m, emp.var.rate y nr.employed, evidenciando una fuerte redundancia entre indicadores macroeconómicos. 
+
+Por otro lado, el ACM permitió estudiar las asociaciones entre categorías cualitativas, detectando perfiles diferenciados según variables como job, education, contact o la propia respuesta de la campaña (y). En concreto, muestra una clara diferenciación entre clientes que responden positivamente a la campaña y aquellos que no. Aunque la capacidad explicativa de las primeras dimensiones fue menor que en el ACP, el ACM permitió captar relaciones categóricas que no podían observarse únicamente mediante variables numéricas.
+
+El FAMD, combinando simultáneamente variables cuantitativas y cualitativas, permitió obtener una representación más global y realista de los clientes, ya que en este tipo de problemas las diferencias entre individuos no dependen únicamente de variables económicas, sino también de factores sociodemográficos y del comportamiento frente a campañas anteriores.
+
+Finalmente, el clustering jerárquico y los métodos discriminantes permitieron transformar esta estructura factorial en perfiles concretos de clientes. Los resultados mostraron la existencia de un grupo claramente diferenciado, caracterizado por una mayor interacción previa con la campaña y, por tanto, una probabilidad significativamente más alta de respuesta positiva.
+
+En general, los distintos métodos no deben interpretarse como técnicas independientes, sino como herramientas complementarias que permiten analizar los datos desde distintos puntos de vista: reducción de dimensión, interpretación de relaciones, detección de perfiles y validación de grupos.
+
+## Análisis de las coincidencias y divergencias entre métodos 
+
+A pesar de que cada técnica trabaja sobre tipos de variables diferentes y utiliza metodologías distintas, los resultados obtenidos presentan varias coincidencias importantes.
+
+En primer lugar, todos los métodos identifican que existe una diferenciación clara entre clientes más activos y receptivos frente a la campaña y clientes con menor interacción y menor probabilidad de respuesta positiva. Tanto el ACP como el clustering muestran que variables como previous, pdays y duration son fundamentales para distinguir perfiles de comportamiento. Del mismo modo, el ACM detecta asociaciones entre categorías relacionadas con el éxito previo de campañas y la respuesta positiva.
+
+Otra coincidencia importante es la relevancia del contexto económico. En el ACP, variables como euribor3m, emp.var.rate y nr.employed dominan claramente la primera dimensión. Posteriormente, el clustering confirma que algunos grupos presentan valores económicos claramente diferenciados. El FAMD también recoge esta estructura, aunque de forma más distribuida debido a la combinación de información numérica y categórica.
+
+Además, todos los métodos coinciden en que la mayoría de individuos presentan perfiles relativamente similares y cercanos al promedio, mientras que únicamente un grupo reducido de observaciones extremas es el que realmente define gran parte de la estructura de los datos.
+
+Sin embargo, también aparecen diferencias importantes entre técnicas.
+
+La principal diferencia es que el ACP muestra una estructura mucho más clara y estable que el ACM. En el ACP las dos primeras dimensiones consiguen explicar una parte importante de la variabilidad total y permiten interpretar fácilmente los ejes asociados al contexto económico y al historial de campañas. En cambio, en el ACM la varianza queda mucho más repartida y las categorías aparecen más dispersas, dificultando encontrar separaciones tan claras entre perfiles.
+
+Otra diferencia importante aparece en la interpretación de los clústeres. En el clustering realizado únicamente sobre variables numéricas, las diferencias entre grupos estaban muy influenciadas por variables como la edad o ciertos indicadores económicos. Sin embargo, cuando se utiliza FAMD, los grupos pasan a estar más relacionados con el comportamiento frente a campañas anteriores y con variables categóricas como poutcome, contact o y. Esto hace que los clústeres obtenidos mediante FAMD resulten más interpretables desde el punto de vista del negocio.
+
+También observamos diferencias en la separación de grupos. En el clustering jerárquico sobre FAMD aparece un clúster claramente separado del resto, mientras que los otros dos presentan bastante solapamiento. Esto sugiere que existe un perfil de cliente muy diferenciable, pero que gran parte de los clientes mantienen comportamientos relativamente parecidos entre sí.
+
+Finalmente, los métodos discriminantes confirman que la mayor separación entre clientes se produce precisamente alrededor del clúster asociado a campañas exitosas. Tanto el LDA como el Random Forest consiguen clasificar este grupo con un error prácticamente nulo, reforzando la idea de que este perfil posee características muy diferenciadas respecto al resto de clientes.
+
+En conjunto, aunque cada técnica enfatiza aspectos distintos de los datos, todas convergen en una conclusión común: el historial previo de interacción con el banco y el comportamiento frente a campañas anteriores son los factores que más diferencian a los clientes y los que mejor permiten identificar perfiles con mayor probabilidad de respuesta positiva.
+
+
+\newpage
+
+# Conclusiones generales 
+
+Los resultados obtenidos permiten concluir que el comportamiento previo de los clientes frente a campañas anteriores es el factor más determinante para explicar la respuesta positiva a una nueva campaña bancaria.
+
+Las técnicas de reducción de dimensionalidad han mostrado que gran parte de la estructura de los datos puede resumirse mediante unas pocas dimensiones relacionadas principalmente con el historial de campañas previas, las condiciones económicas y el nivel de interacción del cliente con la entidad.
+
+Por otra parte, los métodos de clustering han permitido identificar distintos perfiles de clientes, destacando especialmente un grupo claramente asociado a campañas exitosas y con elevada probabilidad de suscripción.
+
+Además, los modelos discriminantes muestran que los grupos obtenidos no son aleatorios, sino que presentan diferencias reales y detectables. Esto refuerza la validez de la segmentación obtenida y su posible utilidad práctica dentro del contexto bancario.
+
+En conjunto, el trabajo muestra cómo las técnicas multivariantes y de aprendizaje no supervisado permiten extraer patrones relevantes, simplificar datos complejos y construir perfiles de clientes útiles para la toma de decisiones.
+
+Una posible línea futura consistiría en estudiar la evolución temporal de las campañas, incorporando información longitudinal para analizar cómo cambia el comportamiento de los clientes a lo largo del tiempo.
+
+Además, podría ampliarse el estudio incluyendo nuevas variables socioeconómicas o indicadores externos que ayuden a explicar mejor las diferencias entre clientes y el impacto del contexto económico sobre las campañas.
+
+Finalmente, una aplicación especialmente interesante sería utilizar los perfiles obtenidos para diseñar campañas personalizadas y estrategias de segmentación comercial más eficientes, permitiendo optimizar recursos y aumentar la tasa de éxito de futuras campañas bancarias.
+
+
+## Plan de trabajo real 
+
+Durante la elaboración del trabajo hemos tenido diferentes contratiempos, los cuales han afectado al planteamiento inicial del proyecto. Durante la realización de la tercera entrega nos dimos cuenta de que el dataset escogido inicialmente era una simulación y que no se adaptaba a los requerimientos del proyecto. Por tanto, tuvimos que cambiar el conjunto de datos por el actual y volver a empezar gran parte del trabajo, por ello los plazos de entregas se ven relativamente alterados ya que fueron adaptados a este cambio. 
+
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+crono_new <- data.frame(
+  Task = factor(
+    c(
+      "D1: Nuevo dataset",
+      "D2: Plan revisado",
+      "D3: Descriptiva",
+      "D4: Análisis final"
+    ),
+    
+    levels = rev(c(
+      "D1: Nuevo dataset",
+      "D2: Plan revisado",
+      "D3: Descriptiva",
+      "D4: Análisis final"
+    ))
+  ),
+  
+  Start = as.Date(c(
+    "2026-03-20",
+    "2026-03-22",
+    "2026-03-25",
+    "2026-03-28"
+  )),
+  
+  End = as.Date(c(
+    "2026-03-21",
+    "2026-03-24",
+    "2026-03-27",
+    "2026-05-27"
+  )),
+  
+  Fase = c(
+    "Fase 1",
+    "Fase 2",
+    "Fase 3",
+    "Fase 4"
+  )
+)
+
+ggplot(crono_new) +
+  
+  # barras temporales
+  geom_segment(
+    aes(
+      x = Start,
+      xend = End,
+      y = Task,
+      yend = Task,
+      color = Fase
+    ),
+    linewidth = 10,
+    lineend = "round"
+  ) +
+  
+  # puntos de inicio
+  geom_point(
+    aes(
+      x = Start,
+      y = Task,
+      color = Fase
+    ),
+    size = 4
+  ) +
+  
+  # puntos de final
+  geom_point(
+    aes(
+      x = End,
+      y = Task,
+      color = Fase
+    ),
+    size = 4
+  ) +
+  
+  scale_color_manual(values = c(
+    "#F4A261",
+    "#2A9D8F",
+    "#457B9D",
+    "#E63946"
+  )) +
+  
+  scale_x_date(
+    date_breaks = "1 week",
+    date_labels = "%d-%b"
+  ) +
+  
+  labs(
+    title = "Planificación de contingencia (Dataset real)",
+    subtitle = "Reestructuración y adaptación del proyecto",
+    x = "Calendario",
+    y = ""
+  ) +
+  
+  theme_minimal(base_size = 11) +
+  
+  theme(
+    legend.position = "none",
+    
+    panel.grid.major.y = element_blank(),
+    
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1
+    ),
+    
+    plot.title = element_text(
+      face = "bold",
+      size = 15
+    ),
+    
+    plot.subtitle = element_text(
+      size = 10,
+      color = "gray40"
+    )
+  )
+```
+
+
+
+\newpage
+
+# Referencias
+
+
